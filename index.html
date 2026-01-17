@@ -1090,7 +1090,6 @@
         <header class="header">
             <h1>OnceHub Availability</h1>
             <div class="header-right">
-                <div class="history-badge" id="historyBadge">0 days tracked</div>
                 <div class="sync-status">
                     <div class="status-dot" id="statusDot"></div>
                     <span id="syncText">Connected</span>
@@ -1100,12 +1099,7 @@
 
         <!-- Warning Banner -->
         <div class="warning-banner" id="warningBanner">
-            ⚠️ Unable to fetch live data. Displaying cached/sample data.
-        </div>
-
-        <!-- Info Banner -->
-        <div class="info-banner" id="infoBanner">
-            📊 Trend data builds over time. Keep this dashboard open daily to accumulate history.
+            ⚠️ Unable to fetch live data. Displaying sample data.
         </div>
 
         <!-- Filter Buttons -->
@@ -1294,18 +1288,7 @@
             SHEET_ID: '1vOXJEegJHJizatcXErv_dOLuWCiz_z8fGZasSDde2tc',
             SHEET_NAME: 'Daily Summary',
             REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
-            MAX_DAYS: 14, // For bar chart scaling
-            HISTORY_DAYS: 7, // Days of history to try fetching
-            STORAGE_KEY: 'oncehub_history',
-            // Date format patterns to try for sheet tab names
-            DATE_FORMATS: [
-                { format: 'iso', example: '2026-01-17' },
-                { format: 'us', example: '01/17/2026' },
-                { format: 'us_short', example: '1/17/2026' },
-                { format: 'mdy', example: '01-17-2026' },
-                { format: 'short', example: '1-17' },
-                { format: 'short_padded', example: '01-17' }
-            ]
+            MAX_DAYS: 14 // For bar chart scaling
         };
 
         // ================================
@@ -1396,239 +1379,57 @@
         // STATE
         // ================================
         let currentData = [];
-        let historicalData = {}; // { 'YYYY-MM-DD': [...data] }
         let currentFilter = 'all';
         let pieChart = null;
-        let trendChart = null;
         let lastSyncTime = null;
         let isUsingSampleData = false;
-        let detectedDateFormat = null;
-
-        // ================================
-        // LOCAL STORAGE
-        // ================================
-        const CACHE_VERSION = 2; // Increment this to force cache clear
-        
-        function loadHistoryFromStorage() {
-            try {
-                // Check cache version
-                const storedVersion = localStorage.getItem(CONFIG.STORAGE_KEY + '_version');
-                if (storedVersion !== String(CACHE_VERSION)) {
-                    console.log('Cache version mismatch, clearing old data');
-                    localStorage.removeItem(CONFIG.STORAGE_KEY);
-                    localStorage.setItem(CONFIG.STORAGE_KEY + '_version', String(CACHE_VERSION));
-                    historicalData = {};
-                    return;
-                }
-                
-                const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
-                if (stored) {
-                    historicalData = JSON.parse(stored);
-                    // Clean up old entries (keep only last 30 days)
-                    const cutoff = new Date();
-                    cutoff.setDate(cutoff.getDate() - 30);
-                    const cutoffStr = cutoff.toISOString().split('T')[0];
-                    Object.keys(historicalData).forEach(date => {
-                        if (date < cutoffStr) {
-                            delete historicalData[date];
-                        }
-                    });
-                }
-            } catch (e) {
-                console.error('Failed to load history:', e);
-                historicalData = {};
-            }
-        }
-
-        function saveHistoryToStorage() {
-            try {
-                localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(historicalData));
-            } catch (e) {
-                console.error('Failed to save history:', e);
-            }
-        }
-
-        // ================================
-        // DATE FORMATTING
-        // ================================
-        function formatDateForSheet(date, format) {
-            const d = new Date(date);
-            const year = d.getFullYear();
-            const month = d.getMonth() + 1;
-            const day = d.getDate();
-            const monthPadded = String(month).padStart(2, '0');
-            const dayPadded = String(day).padStart(2, '0');
-
-            switch (format) {
-                case 'iso': return `${year}-${monthPadded}-${dayPadded}`;
-                case 'us': return `${monthPadded}/${dayPadded}/${year}`;
-                case 'us_short': return `${month}/${day}/${year}`;
-                case 'mdy': return `${monthPadded}-${dayPadded}-${year}`;
-                case 'short': return `${month}-${day}`;
-                case 'short_padded': return `${monthPadded}-${dayPadded}`;
-                default: return `${year}-${monthPadded}-${dayPadded}`;
-            }
-        }
-
-        function getDateKey(date) {
-            const d = new Date(date);
-            return d.toISOString().split('T')[0];
-        }
-
-        function getLastNDays(n) {
-            const dates = [];
-            for (let i = 0; i < n; i++) {
-                const d = new Date();
-                d.setDate(d.getDate() - i);
-                dates.push(d);
-            }
-            return dates;
-        }
 
         // ================================
         // DATA FETCHING
         // ================================
-        async function fetchSheetByName(sheetName) {
-            const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch sheet: ${sheetName}`);
-            }
-            const csvText = await response.text();
-            return parseCSV(csvText);
-        }
-
-        async function detectDateFormat() {
-            const today = new Date();
-            
-            for (const formatObj of CONFIG.DATE_FORMATS) {
-                const sheetName = formatDateForSheet(today, formatObj.format);
-                try {
-                    const data = await fetchSheetByName(sheetName);
-                    if (data.length > 0) {
-                        console.log(`Detected date format: ${formatObj.format} (${sheetName})`);
-                        detectedDateFormat = formatObj.format;
-                        return formatObj.format;
-                    }
-                } catch (e) {
-                    // Try next format
-                }
-            }
-            
-            // Try yesterday in case today's sheet isn't created yet
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            
-            for (const formatObj of CONFIG.DATE_FORMATS) {
-                const sheetName = formatDateForSheet(yesterday, formatObj.format);
-                try {
-                    const data = await fetchSheetByName(sheetName);
-                    if (data.length > 0) {
-                        console.log(`Detected date format: ${formatObj.format} (${sheetName})`);
-                        detectedDateFormat = formatObj.format;
-                        return formatObj.format;
-                    }
-                } catch (e) {
-                    // Try next format
-                }
-            }
-            
-            return null;
-        }
-
-        async function fetchHistoricalData() {
+        async function fetchSheetData() {
             const statusDot = document.getElementById('statusDot');
             const syncText = document.getElementById('syncText');
             
             statusDot.classList.add('syncing');
             syncText.textContent = 'Syncing...';
 
-            let fetchedAny = false;
-            let latestData = null;
-            let latestDate = null;
-
-            // First, detect the date format if not already known
-            if (!detectedDateFormat) {
-                await detectDateFormat();
-            }
-
-            if (detectedDateFormat) {
-                const dates = getLastNDays(CONFIG.HISTORY_DAYS);
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.SHEET_NAME)}`;
+                console.log('Fetching from:', url);
                 
-                for (const date of dates) {
-                    const dateKey = getDateKey(date);
-                    const sheetName = formatDateForSheet(date, detectedDateFormat);
-                    
-                    // Skip if we already have this date cached
-                    if (historicalData[dateKey] && historicalData[dateKey].length > 0) {
-                        if (!latestData) {
-                            latestData = historicalData[dateKey];
-                            latestDate = dateKey;
-                        }
-                        continue;
-                    }
-                    
-                    try {
-                        const data = await fetchSheetByName(sheetName);
-                        if (data.length > 0) {
-                            historicalData[dateKey] = data;
-                            fetchedAny = true;
-                            
-                            if (!latestData || dateKey > latestDate) {
-                                latestData = data;
-                                latestDate = dateKey;
-                            }
-                        }
-                    } catch (e) {
-                        console.log(`Could not fetch sheet for ${dateKey} (${sheetName})`);
-                    }
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
-            }
 
-            // If no date-named sheets found, try the Daily Summary sheet
-            if (!latestData) {
-                try {
-                    const data = await fetchSheetByName(CONFIG.SHEET_NAME);
-                    if (data.length > 0) {
-                        const today = getDateKey(new Date());
-                        historicalData[today] = data;
-                        latestData = data;
-                        latestDate = today;
-                        fetchedAny = true;
-                    }
-                } catch (e) {
-                    console.log('Could not fetch Daily Summary sheet');
+                const csvText = await response.text();
+                console.log('CSV received, length:', csvText.length);
+                console.log('First 500 chars:', csvText.substring(0, 500));
+                
+                const parsedData = parseCSV(csvText);
+                
+                if (parsedData.length > 0) {
+                    currentData = parsedData;
+                    isUsingSampleData = false;
+                    lastSyncTime = new Date();
+                    
+                    statusDot.classList.remove('syncing', 'error');
+                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
+                    document.getElementById('warningBanner').classList.remove('visible');
+                    
+                    console.log('Successfully parsed', parsedData.length, 'items');
+                } else {
+                    throw new Error('No valid data parsed from CSV');
                 }
-            }
-
-            // Save to localStorage
-            if (fetchedAny) {
-                saveHistoryToStorage();
-            }
-
-            // Update current data
-            if (latestData) {
-                currentData = latestData;
-                isUsingSampleData = false;
-                lastSyncTime = new Date();
+            } catch (error) {
+                console.error('Fetch error:', error);
                 
-                statusDot.classList.remove('syncing', 'error');
-                syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
-                document.getElementById('warningBanner').classList.remove('visible');
-            } else if (Object.keys(historicalData).length > 0) {
-                // Use most recent cached data
-                const sortedDates = Object.keys(historicalData).sort().reverse();
-                currentData = historicalData[sortedDates[0]];
-                isUsingSampleData = false;
-                
-                statusDot.classList.remove('syncing');
-                statusDot.classList.add('error');
-                syncText.textContent = 'Using cached data';
-                document.getElementById('warningBanner').classList.add('visible');
-            } else {
-                // Fall back to sample data
-                currentData = SAMPLE_DATA;
-                isUsingSampleData = true;
+                // Fall back to sample data if we have nothing
+                if (currentData.length === 0) {
+                    currentData = SAMPLE_DATA;
+                    isUsingSampleData = true;
+                }
                 
                 statusDot.classList.remove('syncing');
                 statusDot.classList.add('error');
@@ -1636,20 +1437,6 @@
                 document.getElementById('warningBanner').classList.add('visible');
             }
 
-            // Update history badge
-            const daysTracked = Object.keys(historicalData).length;
-            document.getElementById('historyBadge').textContent = `${daysTracked} day${daysTracked !== 1 ? 's' : ''} tracked`;
-
-            // Show info banner if less than 2 days of history
-            if (daysTracked < 2 && !isUsingSampleData) {
-                document.getElementById('infoBanner').classList.add('visible');
-            } else {
-                document.getElementById('infoBanner').classList.remove('visible');
-            }
-
-            // Fetch raw CSV for debugging
-            fetchRawCSV();
-            
             renderDashboard();
             document.getElementById('loadingOverlay').classList.add('hidden');
         }
@@ -1877,12 +1664,14 @@
 
             renderMetrics(data);
             renderComparison();
-            renderTrendChart();
-            renderMovers();
             renderLists(data);
             renderPieChart(data);
             renderCategoryBreakdown();
             renderBarChart(data);
+            
+            // Hide trend sections since we're only showing current data
+            document.getElementById('trendSection').style.display = 'none';
+            document.getElementById('moversSection').style.display = 'none';
         }
 
         function renderEmptyState() {
@@ -1905,34 +1694,14 @@
             const best = sorted[0];
             const worst = sorted[sorted.length - 1];
 
-            // Calculate trend vs yesterday
-            const yesterdayData = getYesterdayData();
-            let avgTrend = null;
-            if (yesterdayData) {
-                const yesterdayFiltered = currentFilter === 'all' 
-                    ? yesterdayData 
-                    : yesterdayData.filter(d => d.category === currentFilter);
-                if (yesterdayFiltered.length > 0) {
-                    const yesterdayAvg = yesterdayFiltered.reduce((sum, d) => sum + d.days, 0) / yesterdayFiltered.length;
-                    avgTrend = avg - yesterdayAvg;
-                }
-            }
-
-            const trendHtml = avgTrend !== null ? `
-                <span class="trend-indicator ${avgTrend > 0 ? 'up' : avgTrend < 0 ? 'down' : 'neutral'}">
-                    ${avgTrend > 0 ? '↑' : avgTrend < 0 ? '↓' : '→'}${Math.abs(avgTrend).toFixed(1)}
-                </span>
-            ` : '';
-
             document.getElementById('metricsGrid').innerHTML = `
                 <div class="card metric-card">
                     <div class="metric-value">${total}</div>
                     <div class="metric-label">Total URLs</div>
                 </div>
                 <div class="card metric-card">
-                    <div class="metric-value">${avg.toFixed(1)}${trendHtml}</div>
+                    <div class="metric-value">${avg.toFixed(1)}</div>
                     <div class="metric-label">Avg Wait (days)</div>
-                    ${avgTrend !== null ? `<div class="metric-sublabel">vs yesterday</div>` : ''}
                 </div>
                 <div class="card metric-card">
                     <div class="metric-value success">${immediate}</div>
@@ -2338,25 +2107,15 @@
             const lowest = sorted.slice(0, 10);
             const highest = sorted.slice(-10).reverse();
 
-            const renderItem = (item, isLow) => {
-                const change = calculateChange(item.name);
-                let trendHtml = '';
-                if (change !== null && change !== 0) {
-                    const trendClass = change < 0 ? 'improved' : 'worsened';
-                    trendHtml = `<span class="wait-item-trend ${trendClass}">${change < 0 ? '↓' : '↑'}${Math.abs(change)}</span>`;
-                }
-
-                return `
-                    <div class="wait-item">
-                        <div class="wait-item-name">
-                            <span class="category-dot ${item.category}"></span>
-                            ${item.name}
-                        </div>
-                        ${trendHtml}
-                        <div class="wait-item-days ${isLow ? 'low' : 'high'}">${item.days}d</div>
+            const renderItem = (item, isLow) => `
+                <div class="wait-item">
+                    <div class="wait-item-name">
+                        <span class="category-dot ${item.category}"></span>
+                        ${item.name}
                     </div>
-                `;
-            };
+                    <div class="wait-item-days ${isLow ? 'low' : 'high'}">${item.days}d</div>
+                </div>
+            `;
 
             document.getElementById('lowestList').innerHTML = lowest.map(item => renderItem(item, true)).join('');
             document.getElementById('highestList').innerHTML = highest.map(item => renderItem(item, false)).join('');
@@ -2434,27 +2193,12 @@
                 { id: 'provider', name: 'Providers', fullName: 'Individual Practitioners', icon: '👨‍⚕️' }
             ];
 
-            const yesterdayData = getYesterdayData();
-
             document.getElementById('categoryBreakdown').innerHTML = categories.map(cat => {
                 const items = currentData.filter(d => d.category === cat.id);
                 const count = items.length;
                 const avg = count > 0 
                     ? (items.reduce((sum, d) => sum + d.days, 0) / count)
                     : 0;
-
-                let trendHtml = '';
-                if (yesterdayData) {
-                    const yesterdayItems = yesterdayData.filter(d => d.category === cat.id);
-                    if (yesterdayItems.length > 0) {
-                        const yesterdayAvg = yesterdayItems.reduce((sum, d) => sum + d.days, 0) / yesterdayItems.length;
-                        const change = avg - yesterdayAvg;
-                        if (change !== 0) {
-                            const trendClass = change < 0 ? 'improved' : 'worsened';
-                            trendHtml = `<div class="category-trend ${trendClass}">${change < 0 ? '↓' : '↑'}${Math.abs(change).toFixed(1)}d vs yesterday</div>`;
-                        }
-                    }
-                }
 
                 return `
                     <div class="category-card ${cat.id}">
@@ -2466,7 +2210,6 @@
                         <div class="category-stats">
                             <div class="category-count">${count}</div>
                             <div class="category-avg">Avg: ${avg.toFixed(1)}d</div>
-                            ${trendHtml}
                         </div>
                     </div>
                 `;
@@ -2480,13 +2223,6 @@
             const barChart = document.getElementById('barChart');
             barChart.innerHTML = sorted.map(item => {
                 const percentage = (item.days / maxDays) * 100;
-                const change = calculateChange(item.name);
-                
-                let trendHtml = '';
-                if (change !== null && change !== 0) {
-                    const trendClass = change < 0 ? 'improved' : 'worsened';
-                    trendHtml = `<span class="bar-trend ${trendClass}">${change < 0 ? '↓' : '↑'}${Math.abs(change)}</span>`;
-                }
 
                 return `
                     <div class="bar-row">
@@ -2494,7 +2230,7 @@
                         <div class="bar-container">
                             <div class="bar-fill ${item.category}" style="width: 0%;" data-width="${percentage}"></div>
                         </div>
-                        <div class="bar-value">${item.days}d ${trendHtml}</div>
+                        <div class="bar-value">${item.days}d</div>
                     </div>
                 `;
             }).join('');
@@ -2542,8 +2278,6 @@
                 'HRT Count': currentData.filter(d => d.category === 'hrt').length,
                 'TRT Count': currentData.filter(d => d.category === 'trt').length,
                 'Provider Count': currentData.filter(d => d.category === 'provider').length,
-                'Historical Days': Object.keys(historicalData).length,
-                'Detected Date Format': detectedDateFormat || 'None',
                 'Using Sample Data': isUsingSampleData,
                 'Last Sync': lastSyncTime ? lastSyncTime.toISOString() : 'Never',
                 'Sheet ID': CONFIG.SHEET_ID,
@@ -2556,33 +2290,15 @@
             text += '\n\n=== PARSED DATA (all items) ===\n';
             text += currentData.map((d, i) => `${i+1}. [${d.category}] ${d.name} = ${d.days}d`).join('\n');
             
-            if (debugData.rawCSV) {
-                text += '\n\n=== RAW CSV (first 50 lines) ===\n';
-                text += debugData.rawCSV.split('\n').slice(0, 50).map((line, i) => `${i+1}: ${line}`).join('\n');
-            }
-            
             content.textContent = text;
-        }
-
-        async function fetchRawCSV() {
-            try {
-                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.SHEET_NAME)}`;
-                const response = await fetch(url);
-                if (response.ok) {
-                    debugData.rawCSV = await response.text();
-                }
-            } catch (e) {
-                console.error('Failed to fetch raw CSV:', e);
-            }
         }
 
         // ================================
         // INITIALIZATION
         // ================================
         document.addEventListener('DOMContentLoaded', () => {
-            loadHistoryFromStorage();
-            fetchHistoricalData();
-            setInterval(fetchHistoricalData, CONFIG.REFRESH_INTERVAL);
+            fetchSheetData();
+            setInterval(fetchSheetData, CONFIG.REFRESH_INTERVAL);
         });
     </script>
 </body>
