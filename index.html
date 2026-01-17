@@ -6,6 +6,7 @@
     <title>OnceHub Availability Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <style>
         :root {
             --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
@@ -101,6 +102,12 @@
             background-clip: text;
         }
 
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
         .sync-status {
             display: flex;
             align-items: center;
@@ -134,6 +141,16 @@
             50% { opacity: 0.5; transform: scale(1.2); }
         }
 
+        .history-badge {
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: var(--trt-color);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
         .warning-banner {
             background: rgba(234, 179, 8, 0.15);
             border: 1px solid rgba(234, 179, 8, 0.3);
@@ -146,6 +163,21 @@
         }
 
         .warning-banner.visible {
+            display: block;
+        }
+
+        .info-banner {
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: var(--hrt-color);
+            display: none;
+        }
+
+        .info-banner.visible {
             display: block;
         }
 
@@ -237,6 +269,10 @@
             font-weight: 600;
             color: var(--text-primary);
             margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
         .metric-value.success { color: var(--success-color); }
@@ -254,6 +290,71 @@
             font-size: 12px;
             color: var(--text-muted);
             margin-top: 4px;
+        }
+
+        .trend-indicator {
+            font-size: 14px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .trend-indicator.up {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger-color);
+        }
+
+        .trend-indicator.down {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success-color);
+        }
+
+        .trend-indicator.neutral {
+            background: rgba(148, 163, 184, 0.2);
+            color: var(--text-secondary);
+        }
+
+        /* Trend Chart Section */
+        .trend-section {
+            margin-bottom: 24px;
+        }
+
+        .trend-chart-container {
+            height: 250px;
+            position: relative;
+        }
+
+        .trend-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .trend-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .trend-stats {
+            display: flex;
+            gap: 24px;
+        }
+
+        .trend-stat {
+            text-align: center;
+        }
+
+        .trend-stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .trend-stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
         }
 
         /* Two Column Grid */
@@ -308,6 +409,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex: 1;
         }
 
         .category-dot {
@@ -320,6 +422,18 @@
         .category-dot.hrt { background: var(--hrt-color); }
         .category-dot.trt { background: var(--trt-color); }
         .category-dot.provider { background: var(--provider-color); }
+
+        .wait-item-trend {
+            font-size: 12px;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .wait-item-trend.improved { color: var(--success-color); }
+        .wait-item-trend.worsened { color: var(--danger-color); }
+        .wait-item-trend.unchanged { color: var(--text-muted); }
 
         .wait-item-days {
             font-family: 'JetBrains Mono', monospace;
@@ -466,6 +580,14 @@
             color: var(--text-muted);
         }
 
+        .category-trend {
+            font-size: 11px;
+            margin-top: 2px;
+        }
+
+        .category-trend.improved { color: var(--success-color); }
+        .category-trend.worsened { color: var(--danger-color); }
+
         /* Bar Chart */
         .bar-chart-section {
             margin-bottom: 24px;
@@ -539,10 +661,21 @@
             font-family: 'JetBrains Mono', monospace;
             font-size: 12px;
             color: var(--text-primary);
-            width: 50px;
+            width: 80px;
             text-align: right;
             flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
         }
+
+        .bar-trend {
+            font-size: 10px;
+        }
+
+        .bar-trend.improved { color: var(--success-color); }
+        .bar-trend.worsened { color: var(--danger-color); }
 
         /* Footer */
         .footer {
@@ -596,6 +729,67 @@
             opacity: 0.5;
         }
 
+        /* Movers Section */
+        .movers-section {
+            margin-bottom: 24px;
+        }
+
+        .movers-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .movers-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .mover-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .mover-rank {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+            width: 24px;
+        }
+
+        .mover-info {
+            flex: 1;
+            margin-left: 8px;
+        }
+
+        .mover-name {
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+
+        .mover-change {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        .mover-change.improved {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success-color);
+        }
+
+        .mover-change.worsened {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger-color);
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 16px;
@@ -613,6 +807,10 @@
                 width: 120px;
                 font-size: 11px;
             }
+
+            .trend-stats {
+                display: none;
+            }
         }
     </style>
 </head>
@@ -627,15 +825,23 @@
         <!-- Header -->
         <header class="header">
             <h1>OnceHub Availability</h1>
-            <div class="sync-status">
-                <div class="status-dot" id="statusDot"></div>
-                <span id="syncText">Connected</span>
+            <div class="header-right">
+                <div class="history-badge" id="historyBadge">0 days tracked</div>
+                <div class="sync-status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="syncText">Connected</span>
+                </div>
             </div>
         </header>
 
         <!-- Warning Banner -->
         <div class="warning-banner" id="warningBanner">
             ⚠️ Unable to fetch live data. Displaying cached/sample data.
+        </div>
+
+        <!-- Info Banner -->
+        <div class="info-banner" id="infoBanner">
+            📊 Trend data builds over time. Keep this dashboard open daily to accumulate history.
         </div>
 
         <!-- Filter Buttons -->
@@ -648,6 +854,37 @@
 
         <!-- Metrics -->
         <div class="metrics-grid" id="metricsGrid"></div>
+
+        <!-- Trend Chart -->
+        <div class="card trend-section" id="trendSection" style="display: none;">
+            <div class="trend-header">
+                <h3>📈 7-Day Trend</h3>
+                <div class="trend-stats" id="trendStats"></div>
+            </div>
+            <div class="trend-chart-container">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Movers Section -->
+        <div class="movers-section" id="moversSection" style="display: none;">
+            <div class="movers-grid">
+                <div class="card">
+                    <div class="list-header">
+                        <div class="accent green"></div>
+                        <h3>Most Improved</h3>
+                    </div>
+                    <div id="improvedList"></div>
+                </div>
+                <div class="card">
+                    <div class="list-header">
+                        <div class="accent red"></div>
+                        <h3>Most Declined</h3>
+                    </div>
+                    <div id="declinedList"></div>
+                </div>
+            </div>
+        </div>
 
         <!-- Two Column: Lists -->
         <div class="two-column">
@@ -704,7 +941,7 @@
                     <span>Provider - Individual Practitioners</span>
                 </div>
             </div>
-            <div class="footer-note">Data refreshes automatically every 5 minutes</div>
+            <div class="footer-note">Data refreshes automatically every 5 minutes • Historical data cached locally</div>
         </footer>
     </div>
 
@@ -716,7 +953,18 @@
             SHEET_ID: '1vOXJEegJHJizatcXErv_dOLuWCiz_z8fGZasSDde2tc',
             SHEET_NAME: 'Daily Summary',
             REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
-            MAX_DAYS: 14 // For bar chart scaling
+            MAX_DAYS: 14, // For bar chart scaling
+            HISTORY_DAYS: 7, // Days of history to try fetching
+            STORAGE_KEY: 'oncehub_history',
+            // Date format patterns to try for sheet tab names
+            DATE_FORMATS: [
+                { format: 'iso', example: '2026-01-17' },
+                { format: 'us', example: '01/17/2026' },
+                { format: 'us_short', example: '1/17/2026' },
+                { format: 'mdy', example: '01-17-2026' },
+                { format: 'short', example: '1-17' },
+                { format: 'short_padded', example: '01-17' }
+            ]
         };
 
         // ================================
@@ -807,55 +1055,243 @@
         // STATE
         // ================================
         let currentData = [];
+        let historicalData = {}; // { 'YYYY-MM-DD': [...data] }
         let currentFilter = 'all';
         let pieChart = null;
+        let trendChart = null;
         let lastSyncTime = null;
         let isUsingSampleData = false;
+        let detectedDateFormat = null;
+
+        // ================================
+        // LOCAL STORAGE
+        // ================================
+        function loadHistoryFromStorage() {
+            try {
+                const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
+                if (stored) {
+                    historicalData = JSON.parse(stored);
+                    // Clean up old entries (keep only last 30 days)
+                    const cutoff = new Date();
+                    cutoff.setDate(cutoff.getDate() - 30);
+                    const cutoffStr = cutoff.toISOString().split('T')[0];
+                    Object.keys(historicalData).forEach(date => {
+                        if (date < cutoffStr) {
+                            delete historicalData[date];
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load history:', e);
+                historicalData = {};
+            }
+        }
+
+        function saveHistoryToStorage() {
+            try {
+                localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(historicalData));
+            } catch (e) {
+                console.error('Failed to save history:', e);
+            }
+        }
+
+        // ================================
+        // DATE FORMATTING
+        // ================================
+        function formatDateForSheet(date, format) {
+            const d = new Date(date);
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            const day = d.getDate();
+            const monthPadded = String(month).padStart(2, '0');
+            const dayPadded = String(day).padStart(2, '0');
+
+            switch (format) {
+                case 'iso': return `${year}-${monthPadded}-${dayPadded}`;
+                case 'us': return `${monthPadded}/${dayPadded}/${year}`;
+                case 'us_short': return `${month}/${day}/${year}`;
+                case 'mdy': return `${monthPadded}-${dayPadded}-${year}`;
+                case 'short': return `${month}-${day}`;
+                case 'short_padded': return `${monthPadded}-${dayPadded}`;
+                default: return `${year}-${monthPadded}-${dayPadded}`;
+            }
+        }
+
+        function getDateKey(date) {
+            const d = new Date(date);
+            return d.toISOString().split('T')[0];
+        }
+
+        function getLastNDays(n) {
+            const dates = [];
+            for (let i = 0; i < n; i++) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                dates.push(d);
+            }
+            return dates;
+        }
 
         // ================================
         // DATA FETCHING
         // ================================
-        async function fetchSheetData() {
+        async function fetchSheetByName(sheetName) {
+            const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch sheet: ${sheetName}`);
+            }
+            const csvText = await response.text();
+            return parseCSV(csvText);
+        }
+
+        async function detectDateFormat() {
+            const today = new Date();
+            
+            for (const formatObj of CONFIG.DATE_FORMATS) {
+                const sheetName = formatDateForSheet(today, formatObj.format);
+                try {
+                    const data = await fetchSheetByName(sheetName);
+                    if (data.length > 0) {
+                        console.log(`Detected date format: ${formatObj.format} (${sheetName})`);
+                        detectedDateFormat = formatObj.format;
+                        return formatObj.format;
+                    }
+                } catch (e) {
+                    // Try next format
+                }
+            }
+            
+            // Try yesterday in case today's sheet isn't created yet
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            for (const formatObj of CONFIG.DATE_FORMATS) {
+                const sheetName = formatDateForSheet(yesterday, formatObj.format);
+                try {
+                    const data = await fetchSheetByName(sheetName);
+                    if (data.length > 0) {
+                        console.log(`Detected date format: ${formatObj.format} (${sheetName})`);
+                        detectedDateFormat = formatObj.format;
+                        return formatObj.format;
+                    }
+                } catch (e) {
+                    // Try next format
+                }
+            }
+            
+            return null;
+        }
+
+        async function fetchHistoricalData() {
             const statusDot = document.getElementById('statusDot');
             const syncText = document.getElementById('syncText');
             
             statusDot.classList.add('syncing');
             syncText.textContent = 'Syncing...';
 
-            try {
-                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.SHEET_NAME)}`;
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error('Failed to fetch');
-                }
+            let fetchedAny = false;
+            let latestData = null;
+            let latestDate = null;
 
-                const csvText = await response.text();
-                const parsedData = parseCSV(csvText);
+            // First, detect the date format if not already known
+            if (!detectedDateFormat) {
+                await detectDateFormat();
+            }
+
+            if (detectedDateFormat) {
+                const dates = getLastNDays(CONFIG.HISTORY_DAYS);
                 
-                if (parsedData.length > 0) {
-                    currentData = parsedData;
-                    isUsingSampleData = false;
-                    lastSyncTime = new Date();
+                for (const date of dates) {
+                    const dateKey = getDateKey(date);
+                    const sheetName = formatDateForSheet(date, detectedDateFormat);
                     
-                    statusDot.classList.remove('syncing', 'error');
-                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
-                    document.getElementById('warningBanner').classList.remove('visible');
-                } else {
-                    throw new Error('No valid data parsed');
+                    // Skip if we already have this date cached
+                    if (historicalData[dateKey] && historicalData[dateKey].length > 0) {
+                        if (!latestData) {
+                            latestData = historicalData[dateKey];
+                            latestDate = dateKey;
+                        }
+                        continue;
+                    }
+                    
+                    try {
+                        const data = await fetchSheetByName(sheetName);
+                        if (data.length > 0) {
+                            historicalData[dateKey] = data;
+                            fetchedAny = true;
+                            
+                            if (!latestData || dateKey > latestDate) {
+                                latestData = data;
+                                latestDate = dateKey;
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`Could not fetch sheet for ${dateKey} (${sheetName})`);
+                    }
                 }
-            } catch (error) {
-                console.error('Fetch error:', error);
+            }
+
+            // If no date-named sheets found, try the Daily Summary sheet
+            if (!latestData) {
+                try {
+                    const data = await fetchSheetByName(CONFIG.SHEET_NAME);
+                    if (data.length > 0) {
+                        const today = getDateKey(new Date());
+                        historicalData[today] = data;
+                        latestData = data;
+                        latestDate = today;
+                        fetchedAny = true;
+                    }
+                } catch (e) {
+                    console.log('Could not fetch Daily Summary sheet');
+                }
+            }
+
+            // Save to localStorage
+            if (fetchedAny) {
+                saveHistoryToStorage();
+            }
+
+            // Update current data
+            if (latestData) {
+                currentData = latestData;
+                isUsingSampleData = false;
+                lastSyncTime = new Date();
                 
-                if (currentData.length === 0) {
-                    currentData = SAMPLE_DATA;
-                    isUsingSampleData = true;
-                }
+                statusDot.classList.remove('syncing', 'error');
+                syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
+                document.getElementById('warningBanner').classList.remove('visible');
+            } else if (Object.keys(historicalData).length > 0) {
+                // Use most recent cached data
+                const sortedDates = Object.keys(historicalData).sort().reverse();
+                currentData = historicalData[sortedDates[0]];
+                isUsingSampleData = false;
                 
                 statusDot.classList.remove('syncing');
                 statusDot.classList.add('error');
                 syncText.textContent = 'Using cached data';
                 document.getElementById('warningBanner').classList.add('visible');
+            } else {
+                // Fall back to sample data
+                currentData = SAMPLE_DATA;
+                isUsingSampleData = true;
+                
+                statusDot.classList.remove('syncing');
+                statusDot.classList.add('error');
+                syncText.textContent = 'Using sample data';
+                document.getElementById('warningBanner').classList.add('visible');
+            }
+
+            // Update history badge
+            const daysTracked = Object.keys(historicalData).length;
+            document.getElementById('historyBadge').textContent = `${daysTracked} day${daysTracked !== 1 ? 's' : ''} tracked`;
+
+            // Show info banner if less than 2 days of history
+            if (daysTracked < 2 && !isUsingSampleData) {
+                document.getElementById('infoBanner').classList.add('visible');
+            } else {
+                document.getElementById('infoBanner').classList.remove('visible');
             }
 
             renderDashboard();
@@ -870,24 +1306,20 @@
                 const line = lines[i].trim();
                 if (!line) continue;
 
-                // Parse CSV considering quoted values
                 const values = parseCSVLine(line);
                 if (values.length < 2) continue;
 
                 const name = values[0].replace(/^"|"$/g, '').trim();
                 const valueStr = values[1].replace(/^"|"$/g, '').trim();
 
-                // Skip header rows or invalid entries
                 if (!name || name.toLowerCase() === 'name' || name.toLowerCase() === 'state') continue;
 
-                // Extract days number from value like "✅ 2" or "⚡ 4" or just "3"
                 const daysMatch = valueStr.match(/(\d+)/);
                 if (!daysMatch) continue;
 
                 const days = parseInt(daysMatch[1], 10);
                 if (isNaN(days)) continue;
 
-                // Detect category from name prefix
                 let category = 'provider';
                 if (name.toUpperCase().startsWith('HRT ')) {
                     category = 'hrt';
@@ -924,12 +1356,75 @@
         }
 
         // ================================
+        // TREND CALCULATIONS
+        // ================================
+        function getHistoricalAverage(dateKey, filter = 'all') {
+            const data = historicalData[dateKey];
+            if (!data || data.length === 0) return null;
+            
+            const filtered = filter === 'all' ? data : data.filter(d => d.category === filter);
+            if (filtered.length === 0) return null;
+            
+            return filtered.reduce((sum, d) => sum + d.days, 0) / filtered.length;
+        }
+
+        function getItemHistory(name) {
+            const history = [];
+            const sortedDates = Object.keys(historicalData).sort();
+            
+            for (const date of sortedDates) {
+                const item = historicalData[date].find(d => d.name === name);
+                if (item) {
+                    history.push({ date, days: item.days });
+                }
+            }
+            
+            return history;
+        }
+
+        function calculateChange(name) {
+            const history = getItemHistory(name);
+            if (history.length < 2) return null;
+            
+            const latest = history[history.length - 1].days;
+            const previous = history[history.length - 2].days;
+            
+            return latest - previous;
+        }
+
+        function getYesterdayData() {
+            const sortedDates = Object.keys(historicalData).sort().reverse();
+            if (sortedDates.length < 2) return null;
+            return historicalData[sortedDates[1]];
+        }
+
+        function getWeekAgoData() {
+            const sortedDates = Object.keys(historicalData).sort().reverse();
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const weekAgoKey = getDateKey(weekAgo);
+            
+            // Find closest date to a week ago
+            for (const date of sortedDates) {
+                if (date <= weekAgoKey) {
+                    return historicalData[date];
+                }
+            }
+            
+            // If no exact match, use oldest available
+            if (sortedDates.length > 1) {
+                return historicalData[sortedDates[sortedDates.length - 1]];
+            }
+            
+            return null;
+        }
+
+        // ================================
         // FILTERING
         // ================================
         function setFilter(filter) {
             currentFilter = filter;
             
-            // Update button states
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.filter === filter);
             });
@@ -956,6 +1451,8 @@
             }
 
             renderMetrics(data);
+            renderTrendChart();
+            renderMovers();
             renderLists(data);
             renderPieChart(data);
             renderCategoryBreakdown();
@@ -976,11 +1473,30 @@
 
         function renderMetrics(data) {
             const total = data.length;
-            const avg = (data.reduce((sum, d) => sum + d.days, 0) / total).toFixed(1);
+            const avg = (data.reduce((sum, d) => sum + d.days, 0) / total);
             const immediate = data.filter(d => d.days <= 3).length;
             const sorted = [...data].sort((a, b) => a.days - b.days);
             const best = sorted[0];
             const worst = sorted[sorted.length - 1];
+
+            // Calculate trend vs yesterday
+            const yesterdayData = getYesterdayData();
+            let avgTrend = null;
+            if (yesterdayData) {
+                const yesterdayFiltered = currentFilter === 'all' 
+                    ? yesterdayData 
+                    : yesterdayData.filter(d => d.category === currentFilter);
+                if (yesterdayFiltered.length > 0) {
+                    const yesterdayAvg = yesterdayFiltered.reduce((sum, d) => sum + d.days, 0) / yesterdayFiltered.length;
+                    avgTrend = avg - yesterdayAvg;
+                }
+            }
+
+            const trendHtml = avgTrend !== null ? `
+                <span class="trend-indicator ${avgTrend > 0 ? 'up' : avgTrend < 0 ? 'down' : 'neutral'}">
+                    ${avgTrend > 0 ? '↑' : avgTrend < 0 ? '↓' : '→'}${Math.abs(avgTrend).toFixed(1)}
+                </span>
+            ` : '';
 
             document.getElementById('metricsGrid').innerHTML = `
                 <div class="card metric-card">
@@ -988,8 +1504,9 @@
                     <div class="metric-label">Total URLs</div>
                 </div>
                 <div class="card metric-card">
-                    <div class="metric-value">${avg}</div>
+                    <div class="metric-value">${avg.toFixed(1)}${trendHtml}</div>
                     <div class="metric-label">Avg Wait (days)</div>
+                    ${avgTrend !== null ? `<div class="metric-sublabel">vs yesterday</div>` : ''}
                 </div>
                 <div class="card metric-card">
                     <div class="metric-value success">${immediate}</div>
@@ -1009,30 +1526,260 @@
             `;
         }
 
+        function renderTrendChart() {
+            const sortedDates = Object.keys(historicalData).sort();
+            
+            if (sortedDates.length < 2) {
+                document.getElementById('trendSection').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('trendSection').style.display = 'block';
+
+            // Prepare data for chart
+            const chartData = sortedDates.map(date => ({
+                date: new Date(date),
+                all: getHistoricalAverage(date, 'all'),
+                hrt: getHistoricalAverage(date, 'hrt'),
+                trt: getHistoricalAverage(date, 'trt'),
+                provider: getHistoricalAverage(date, 'provider')
+            })).filter(d => d.all !== null);
+
+            // Calculate stats
+            const firstAvg = chartData[0]?.all || 0;
+            const lastAvg = chartData[chartData.length - 1]?.all || 0;
+            const change = lastAvg - firstAvg;
+            const minAvg = Math.min(...chartData.map(d => d.all));
+            const maxAvg = Math.max(...chartData.map(d => d.all));
+
+            document.getElementById('trendStats').innerHTML = `
+                <div class="trend-stat">
+                    <div class="trend-stat-value" style="color: ${change <= 0 ? 'var(--success-color)' : 'var(--danger-color)'}">
+                        ${change > 0 ? '+' : ''}${change.toFixed(1)}d
+                    </div>
+                    <div class="trend-stat-label">7d Change</div>
+                </div>
+                <div class="trend-stat">
+                    <div class="trend-stat-value" style="color: var(--success-color)">${minAvg.toFixed(1)}d</div>
+                    <div class="trend-stat-label">Best Day</div>
+                </div>
+                <div class="trend-stat">
+                    <div class="trend-stat-value" style="color: var(--danger-color)">${maxAvg.toFixed(1)}d</div>
+                    <div class="trend-stat-label">Worst Day</div>
+                </div>
+            `;
+
+            // Destroy existing chart
+            if (trendChart) {
+                trendChart.destroy();
+            }
+
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            
+            const datasets = [{
+                label: 'Overall Average',
+                data: chartData.map(d => ({ x: d.date, y: d.all })),
+                borderColor: '#f1f5f9',
+                backgroundColor: 'rgba(241, 245, 249, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4,
+                pointBackgroundColor: '#f1f5f9'
+            }];
+
+            if (currentFilter === 'all') {
+                datasets.push(
+                    {
+                        label: 'HRT',
+                        data: chartData.map(d => ({ x: d.date, y: d.hrt })),
+                        borderColor: '#06b6d4',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'TRT',
+                        data: chartData.map(d => ({ x: d.date, y: d.trt })),
+                        borderColor: '#8b5cf6',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Provider',
+                        data: chartData.map(d => ({ x: d.date, y: d.provider })),
+                        borderColor: '#f59e0b',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3
+                    }
+                );
+            }
+
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'MMM d'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(71, 85, 105, 0.3)'
+                            },
+                            ticks: {
+                                color: '#94a3b8'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(71, 85, 105, 0.3)'
+                            },
+                            ticks: {
+                                color: '#94a3b8',
+                                callback: value => value + 'd'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: {
+                                color: '#94a3b8',
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: 'rgba(71, 85, 105, 0.4)',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                                label: context => `${context.dataset.label}: ${context.parsed.y?.toFixed(1) || 'N/A'}d`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderMovers() {
+            const sortedDates = Object.keys(historicalData).sort();
+            
+            if (sortedDates.length < 2) {
+                document.getElementById('moversSection').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('moversSection').style.display = 'block';
+
+            // Calculate changes for all items
+            const changes = [];
+            const latestDate = sortedDates[sortedDates.length - 1];
+            const previousDate = sortedDates[sortedDates.length - 2];
+            const latestData = historicalData[latestDate];
+            const previousData = historicalData[previousDate];
+
+            for (const item of latestData) {
+                // Apply filter
+                if (currentFilter !== 'all' && item.category !== currentFilter) continue;
+
+                const prevItem = previousData.find(d => d.name === item.name);
+                if (prevItem) {
+                    const change = item.days - prevItem.days;
+                    if (change !== 0) {
+                        changes.push({
+                            name: item.name,
+                            category: item.category,
+                            change,
+                            current: item.days,
+                            previous: prevItem.days
+                        });
+                    }
+                }
+            }
+
+            // Sort by change
+            const improved = changes.filter(c => c.change < 0).sort((a, b) => a.change - b.change).slice(0, 5);
+            const declined = changes.filter(c => c.change > 0).sort((a, b) => b.change - a.change).slice(0, 5);
+
+            document.getElementById('improvedList').innerHTML = improved.length > 0 
+                ? improved.map((item, i) => `
+                    <div class="mover-item">
+                        <div class="mover-rank">${i + 1}</div>
+                        <span class="category-dot ${item.category}"></span>
+                        <div class="mover-info">
+                            <div class="mover-name">${item.name}</div>
+                        </div>
+                        <div class="mover-change improved">${item.change}d</div>
+                    </div>
+                `).join('')
+                : '<div class="empty-state">No improvements</div>';
+
+            document.getElementById('declinedList').innerHTML = declined.length > 0
+                ? declined.map((item, i) => `
+                    <div class="mover-item">
+                        <div class="mover-rank">${i + 1}</div>
+                        <span class="category-dot ${item.category}"></span>
+                        <div class="mover-info">
+                            <div class="mover-name">${item.name}</div>
+                        </div>
+                        <div class="mover-change worsened">+${item.change}d</div>
+                    </div>
+                `).join('')
+                : '<div class="empty-state">No declines</div>';
+        }
+
         function renderLists(data) {
             const sorted = [...data].sort((a, b) => a.days - b.days);
             const lowest = sorted.slice(0, 10);
             const highest = sorted.slice(-10).reverse();
 
-            document.getElementById('lowestList').innerHTML = lowest.map(item => `
-                <div class="wait-item">
-                    <div class="wait-item-name">
-                        <span class="category-dot ${item.category}"></span>
-                        ${item.name}
-                    </div>
-                    <div class="wait-item-days low">${item.days}d</div>
-                </div>
-            `).join('');
+            const renderItem = (item, isLow) => {
+                const change = calculateChange(item.name);
+                let trendHtml = '';
+                if (change !== null && change !== 0) {
+                    const trendClass = change < 0 ? 'improved' : 'worsened';
+                    trendHtml = `<span class="wait-item-trend ${trendClass}">${change < 0 ? '↓' : '↑'}${Math.abs(change)}</span>`;
+                }
 
-            document.getElementById('highestList').innerHTML = highest.map(item => `
-                <div class="wait-item">
-                    <div class="wait-item-name">
-                        <span class="category-dot ${item.category}"></span>
-                        ${item.name}
+                return `
+                    <div class="wait-item">
+                        <div class="wait-item-name">
+                            <span class="category-dot ${item.category}"></span>
+                            ${item.name}
+                        </div>
+                        ${trendHtml}
+                        <div class="wait-item-days ${isLow ? 'low' : 'high'}">${item.days}d</div>
                     </div>
-                    <div class="wait-item-days high">${item.days}d</div>
-                </div>
-            `).join('');
+                `;
+            };
+
+            document.getElementById('lowestList').innerHTML = lowest.map(item => renderItem(item, true)).join('');
+            document.getElementById('highestList').innerHTML = highest.map(item => renderItem(item, false)).join('');
         }
 
         function renderPieChart(data) {
@@ -1048,7 +1795,6 @@
             const labels = Object.keys(distribution);
             const values = Object.values(distribution);
 
-            // Destroy existing chart
             if (pieChart) {
                 pieChart.destroy();
             }
@@ -1093,7 +1839,6 @@
                 }
             });
 
-            // Render legend
             document.getElementById('chartLegend').innerHTML = labels.map((label, i) => `
                 <div class="legend-item">
                     <div class="legend-dot" style="background: ${colors[i]}"></div>
@@ -1104,32 +1849,32 @@
 
         function renderCategoryBreakdown() {
             const categories = [
-                { 
-                    id: 'hrt', 
-                    name: 'HRT', 
-                    fullName: 'Hormone Replacement Therapy',
-                    icon: '💊'
-                },
-                { 
-                    id: 'trt', 
-                    name: 'TRT', 
-                    fullName: 'Testosterone Replacement Therapy',
-                    icon: '💪'
-                },
-                { 
-                    id: 'provider', 
-                    name: 'Providers', 
-                    fullName: 'Individual Practitioners',
-                    icon: '👨‍⚕️'
-                }
+                { id: 'hrt', name: 'HRT', fullName: 'Hormone Replacement Therapy', icon: '💊' },
+                { id: 'trt', name: 'TRT', fullName: 'Testosterone Replacement Therapy', icon: '💪' },
+                { id: 'provider', name: 'Providers', fullName: 'Individual Practitioners', icon: '👨‍⚕️' }
             ];
+
+            const yesterdayData = getYesterdayData();
 
             document.getElementById('categoryBreakdown').innerHTML = categories.map(cat => {
                 const items = currentData.filter(d => d.category === cat.id);
                 const count = items.length;
                 const avg = count > 0 
-                    ? (items.reduce((sum, d) => sum + d.days, 0) / count).toFixed(1)
-                    : '0';
+                    ? (items.reduce((sum, d) => sum + d.days, 0) / count)
+                    : 0;
+
+                let trendHtml = '';
+                if (yesterdayData) {
+                    const yesterdayItems = yesterdayData.filter(d => d.category === cat.id);
+                    if (yesterdayItems.length > 0) {
+                        const yesterdayAvg = yesterdayItems.reduce((sum, d) => sum + d.days, 0) / yesterdayItems.length;
+                        const change = avg - yesterdayAvg;
+                        if (change !== 0) {
+                            const trendClass = change < 0 ? 'improved' : 'worsened';
+                            trendHtml = `<div class="category-trend ${trendClass}">${change < 0 ? '↓' : '↑'}${Math.abs(change).toFixed(1)}d vs yesterday</div>`;
+                        }
+                    }
+                }
 
                 return `
                     <div class="category-card ${cat.id}">
@@ -1140,7 +1885,8 @@
                         </div>
                         <div class="category-stats">
                             <div class="category-count">${count}</div>
-                            <div class="category-avg">Avg: ${avg}d</div>
+                            <div class="category-avg">Avg: ${avg.toFixed(1)}d</div>
+                            ${trendHtml}
                         </div>
                     </div>
                 `;
@@ -1151,22 +1897,28 @@
             const sorted = [...data].sort((a, b) => a.days - b.days);
             const maxDays = Math.max(...data.map(d => d.days), CONFIG.MAX_DAYS);
 
-            // Use requestAnimationFrame for smooth animation
             const barChart = document.getElementById('barChart');
             barChart.innerHTML = sorted.map(item => {
                 const percentage = (item.days / maxDays) * 100;
+                const change = calculateChange(item.name);
+                
+                let trendHtml = '';
+                if (change !== null && change !== 0) {
+                    const trendClass = change < 0 ? 'improved' : 'worsened';
+                    trendHtml = `<span class="bar-trend ${trendClass}">${change < 0 ? '↓' : '↑'}${Math.abs(change)}</span>`;
+                }
+
                 return `
                     <div class="bar-row">
                         <div class="bar-label" title="${item.name}">${item.name}</div>
                         <div class="bar-container">
                             <div class="bar-fill ${item.category}" style="width: 0%;" data-width="${percentage}"></div>
                         </div>
-                        <div class="bar-value">${item.days}d</div>
+                        <div class="bar-value">${item.days}d ${trendHtml}</div>
                     </div>
                 `;
             }).join('');
 
-            // Animate bars
             requestAnimationFrame(() => {
                 document.querySelectorAll('.bar-fill').forEach(bar => {
                     bar.style.width = bar.dataset.width + '%';
@@ -1192,10 +1944,10 @@
         // INITIALIZATION
         // ================================
         document.addEventListener('DOMContentLoaded', () => {
-            fetchSheetData();
-            setInterval(fetchSheetData, CONFIG.REFRESH_INTERVAL);
+            loadHistoryFromStorage();
+            fetchHistoricalData();
+            setInterval(fetchHistoricalData, CONFIG.REFRESH_INTERVAL);
         });
     </script>
 </body>
 </html>
-
