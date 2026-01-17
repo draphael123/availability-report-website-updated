@@ -1564,8 +1564,21 @@
                     lastSyncTime = new Date();
                     
                     statusDot.classList.remove('syncing', 'error');
-                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${uniqueData.length} items)`;
-                    warningBanner.classList.remove('visible');
+                    
+                    // Check if we got partial data (only Daily Summary)
+                    if (uniqueData.length <= 25) {
+                        // Likely only got the Daily Summary
+                        syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${uniqueData.length} items - Summary only)`;
+                        warningBanner.innerHTML = `ℹ️ Showing Daily Summary highlights. For full data (76+ items), you can: 
+                            <a href="#" onclick="showFullDataInstructions(); return false;" style="color: var(--warning-color); text-decoration: underline;">View Setup Guide</a>`;
+                        warningBanner.classList.add('visible');
+                        warningBanner.style.background = 'rgba(59, 130, 246, 0.15)';
+                        warningBanner.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+                        console.log('\n⚠️ Only got partial data (Daily Summary). See console for full data instructions.');
+                    } else {
+                        syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${uniqueData.length} items)`;
+                        warningBanner.classList.remove('visible');
+                    }
                     
                     console.log('\n========================================');
                     console.log('=== SUCCESS: ' + uniqueData.length + ' ITEMS LOADED ===');
@@ -1585,6 +1598,37 @@
 
             renderDashboard();
             document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+        
+        // Show instructions for getting full data
+        function showFullDataInstructions() {
+            const instructions = `
+📋 HOW TO GET FULL DATA (76+ items):
+
+The dashboard currently shows only the "Daily Summary" tab (top/bottom highlights).
+To display ALL your data, you have two options:
+
+OPTION 1: Publish the specific Results tab
+1. In Google Sheets, go to File → Share → Publish to web
+2. In the first dropdown, select your latest "Results" tab (e.g., "Results 01-17-2026...")
+3. Select "Comma-separated values (.csv)" in the second dropdown
+4. Click Publish and copy the new URL
+5. Share that URL with me to update the dashboard
+
+OPTION 2: Restructure your sheet (recommended for auto-updates)
+1. Create a new tab called "All Data" as the FIRST tab in your sheet
+2. Use this formula to pull all data: =QUERY({'Results Tab'!A:K}, "SELECT * WHERE Col1 IS NOT NULL")
+3. Move this tab to be the first (leftmost) tab
+4. The dashboard will automatically show all data
+
+OPTION 3: Share the original sheet URL
+Copy the URL from your browser when viewing the Google Sheet (it will look like:
+https://docs.google.com/spreadsheets/d/ABC123.../edit#gid=...)
+Share that URL to enable direct data access.
+            `.trim();
+            
+            console.log(instructions);
+            alert(instructions);
         }
         
         // Convert Google Visualization JSON to CSV
