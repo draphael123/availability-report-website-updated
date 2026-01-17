@@ -588,6 +588,270 @@
         .category-trend.improved { color: var(--success-color); }
         .category-trend.worsened { color: var(--danger-color); }
 
+        /* HRT vs TRT Comparison */
+        .comparison-section {
+            margin-bottom: 24px;
+        }
+
+        .comparison-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .comparison-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 24px;
+            align-items: center;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .comparison-vs {
+                display: none;
+            }
+        }
+
+        .comparison-card {
+            padding: 24px;
+            border-radius: 16px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .comparison-card.hrt {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(6, 182, 212, 0.05));
+            border: 2px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .comparison-card.trt {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.05));
+            border: 2px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .comparison-card.winner {
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+        }
+
+        .comparison-card.winner::after {
+            content: '👑 BETTER';
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: var(--success-color);
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .comparison-label {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .comparison-card.hrt .comparison-label { color: var(--hrt-color); }
+        .comparison-card.trt .comparison-label { color: var(--trt-color); }
+
+        .comparison-avg {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .comparison-card.hrt .comparison-avg { color: var(--hrt-color); }
+        .comparison-card.trt .comparison-avg { color: var(--trt-color); }
+
+        .comparison-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .comparison-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            padding-top: 16px;
+            border-top: 1px solid var(--card-border);
+        }
+
+        .comparison-stat {
+            text-align: center;
+        }
+
+        .comparison-stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .comparison-stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .comparison-vs {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .comparison-vs-text {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-muted);
+        }
+
+        .comparison-diff {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .comparison-diff.hrt-better { color: var(--hrt-color); }
+        .comparison-diff.trt-better { color: var(--trt-color); }
+        .comparison-diff.tie { color: var(--text-muted); }
+
+        .comparison-bar-container {
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 12px;
+        }
+
+        .comparison-bar-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .comparison-bar {
+            height: 32px;
+            background: var(--card-border);
+            border-radius: 16px;
+            overflow: hidden;
+            display: flex;
+        }
+
+        .comparison-bar-hrt {
+            background: linear-gradient(90deg, var(--hrt-color), rgba(6, 182, 212, 0.7));
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            transition: width 0.6s ease-out;
+        }
+
+        .comparison-bar-trt {
+            background: linear-gradient(90deg, rgba(139, 92, 246, 0.7), var(--trt-color));
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            transition: width 0.6s ease-out;
+        }
+
+        /* State Comparison Table */
+        .state-comparison {
+            margin-top: 20px;
+        }
+
+        .state-comparison-header {
+            display: grid;
+            grid-template-columns: 1fr 80px 80px 80px;
+            gap: 12px;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px 8px 0 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .state-comparison-row {
+            display: grid;
+            grid-template-columns: 1fr 80px 80px 80px;
+            gap: 12px;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.2);
+            font-size: 14px;
+            align-items: center;
+        }
+
+        .state-comparison-row:last-child {
+            border-bottom: none;
+        }
+
+        .state-comparison-row:hover {
+            background: rgba(15, 23, 42, 0.3);
+        }
+
+        .state-name {
+            color: var(--text-primary);
+        }
+
+        .state-hrt, .state-trt {
+            font-family: 'JetBrains Mono', monospace;
+            text-align: center;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .state-hrt { 
+            background: rgba(6, 182, 212, 0.15);
+            color: var(--hrt-color);
+        }
+
+        .state-trt { 
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--trt-color);
+        }
+
+        .state-diff {
+            font-family: 'JetBrains Mono', monospace;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .state-diff.hrt-better { color: var(--hrt-color); }
+        .state-diff.trt-better { color: var(--trt-color); }
+        .state-diff.tie { color: var(--text-muted); }
+
+        .state-comparison-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
         /* Bar Chart */
         .bar-chart-section {
             margin-bottom: 24px;
@@ -854,6 +1118,77 @@
 
         <!-- Metrics -->
         <div class="metrics-grid" id="metricsGrid"></div>
+
+        <!-- HRT vs TRT Comparison -->
+        <div class="card comparison-section" id="comparisonSection">
+            <div class="comparison-header">
+                <h3>⚔️ HRT vs TRT Comparison</h3>
+            </div>
+            <div class="comparison-grid">
+                <div class="comparison-card hrt" id="hrtComparisonCard">
+                    <div class="comparison-label">HRT</div>
+                    <div class="comparison-avg" id="hrtAvg">--</div>
+                    <div class="comparison-subtitle">avg days wait</div>
+                    <div class="comparison-stats">
+                        <div class="comparison-stat">
+                            <div class="comparison-stat-value" id="hrtCount">--</div>
+                            <div class="comparison-stat-label">States</div>
+                        </div>
+                        <div class="comparison-stat">
+                            <div class="comparison-stat-value" id="hrtBest">--</div>
+                            <div class="comparison-stat-label">Best</div>
+                        </div>
+                        <div class="comparison-stat">
+                            <div class="comparison-stat-value" id="hrtWorst">--</div>
+                            <div class="comparison-stat-label">Worst</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="comparison-vs">
+                    <div class="comparison-vs-text">VS</div>
+                    <div class="comparison-diff" id="comparisonDiff">--</div>
+                </div>
+                <div class="comparison-card trt" id="trtComparisonCard">
+                    <div class="comparison-label">TRT</div>
+                    <div class="comparison-avg" id="trtAvg">--</div>
+                    <div class="comparison-subtitle">avg days wait</div>
+                    <div class="comparison-stats">
+                        <div class="comparison-stat">
+                            <div class="comparison-stat-value" id="trtCount">--</div>
+                            <div class="comparison-stat-label">States</div>
+                        </div>
+                        <div class="comparison-stat">
+                            <div class="comparison-stat-value" id="trtBest">--</div>
+                            <div class="comparison-stat-label">Best</div>
+                        </div>
+                        <div class="comparison-stat">
+                            <div class="comparison-stat-value" id="trtWorst">--</div>
+                            <div class="comparison-stat-label">Worst</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="comparison-bar-container">
+                <div class="comparison-bar-label">
+                    <span style="color: var(--hrt-color)">HRT Share</span>
+                    <span style="color: var(--trt-color)">TRT Share</span>
+                </div>
+                <div class="comparison-bar">
+                    <div class="comparison-bar-hrt" id="comparisonBarHrt" style="width: 50%">50%</div>
+                    <div class="comparison-bar-trt" id="comparisonBarTrt" style="width: 50%">50%</div>
+                </div>
+            </div>
+            <!-- State-by-State Comparison -->
+            <div class="state-comparison">
+                <div class="state-comparison-header">
+                    <div>State</div>
+                    <div style="text-align: center; color: var(--hrt-color)">HRT</div>
+                    <div style="text-align: center; color: var(--trt-color)">TRT</div>
+                    <div style="text-align: center">Diff</div>
+                </div>
+                <div class="state-comparison-list" id="stateComparisonList"></div>
+            </div>
+        </div>
 
         <!-- Trend Chart -->
         <div class="card trend-section" id="trendSection" style="display: none;">
@@ -1536,6 +1871,7 @@
             }
 
             renderMetrics(data);
+            renderComparison();
             renderTrendChart();
             renderMovers();
             renderLists(data);
@@ -1609,6 +1945,160 @@
                     <div class="metric-sublabel">${truncateName(worst.name)}</div>
                 </div>
             `;
+        }
+
+        function renderComparison() {
+            const hrtData = currentData.filter(d => d.category === 'hrt');
+            const trtData = currentData.filter(d => d.category === 'trt');
+
+            // Hide comparison if no data for either category
+            const section = document.getElementById('comparisonSection');
+            if (hrtData.length === 0 && trtData.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+
+            // Calculate HRT stats
+            const hrtAvg = hrtData.length > 0 
+                ? (hrtData.reduce((sum, d) => sum + d.days, 0) / hrtData.length) 
+                : 0;
+            const hrtSorted = [...hrtData].sort((a, b) => a.days - b.days);
+            const hrtBest = hrtSorted[0]?.days ?? '--';
+            const hrtWorst = hrtSorted[hrtSorted.length - 1]?.days ?? '--';
+
+            // Calculate TRT stats
+            const trtAvg = trtData.length > 0 
+                ? (trtData.reduce((sum, d) => sum + d.days, 0) / trtData.length) 
+                : 0;
+            const trtSorted = [...trtData].sort((a, b) => a.days - b.days);
+            const trtBest = trtSorted[0]?.days ?? '--';
+            const trtWorst = trtSorted[trtSorted.length - 1]?.days ?? '--';
+
+            // Update HRT card
+            document.getElementById('hrtAvg').textContent = hrtData.length > 0 ? hrtAvg.toFixed(1) : '--';
+            document.getElementById('hrtCount').textContent = hrtData.length;
+            document.getElementById('hrtBest').textContent = hrtBest !== '--' ? `${hrtBest}d` : '--';
+            document.getElementById('hrtWorst').textContent = hrtWorst !== '--' ? `${hrtWorst}d` : '--';
+
+            // Update TRT card
+            document.getElementById('trtAvg').textContent = trtData.length > 0 ? trtAvg.toFixed(1) : '--';
+            document.getElementById('trtCount').textContent = trtData.length;
+            document.getElementById('trtBest').textContent = trtBest !== '--' ? `${trtBest}d` : '--';
+            document.getElementById('trtWorst').textContent = trtWorst !== '--' ? `${trtWorst}d` : '--';
+
+            // Determine winner and update diff
+            const hrtCard = document.getElementById('hrtComparisonCard');
+            const trtCard = document.getElementById('trtComparisonCard');
+            const diffEl = document.getElementById('comparisonDiff');
+
+            hrtCard.classList.remove('winner');
+            trtCard.classList.remove('winner');
+            diffEl.classList.remove('hrt-better', 'trt-better', 'tie');
+
+            if (hrtData.length > 0 && trtData.length > 0) {
+                const diff = Math.abs(hrtAvg - trtAvg).toFixed(1);
+                if (hrtAvg < trtAvg) {
+                    hrtCard.classList.add('winner');
+                    diffEl.textContent = `HRT ${diff}d faster`;
+                    diffEl.classList.add('hrt-better');
+                } else if (trtAvg < hrtAvg) {
+                    trtCard.classList.add('winner');
+                    diffEl.textContent = `TRT ${diff}d faster`;
+                    diffEl.classList.add('trt-better');
+                } else {
+                    diffEl.textContent = 'Tied';
+                    diffEl.classList.add('tie');
+                }
+            } else {
+                diffEl.textContent = 'N/A';
+                diffEl.classList.add('tie');
+            }
+
+            // Update comparison bar (based on count or inverse of avg for "better" visual)
+            const totalCount = hrtData.length + trtData.length;
+            if (totalCount > 0) {
+                const hrtPercent = Math.round((hrtData.length / totalCount) * 100);
+                const trtPercent = 100 - hrtPercent;
+                
+                document.getElementById('comparisonBarHrt').style.width = `${hrtPercent}%`;
+                document.getElementById('comparisonBarHrt').textContent = hrtPercent > 10 ? `${hrtPercent}%` : '';
+                document.getElementById('comparisonBarTrt').style.width = `${trtPercent}%`;
+                document.getElementById('comparisonBarTrt').textContent = trtPercent > 10 ? `${trtPercent}%` : '';
+            }
+
+            // Build state-by-state comparison
+            renderStateComparison(hrtData, trtData);
+        }
+
+        function renderStateComparison(hrtData, trtData) {
+            // Extract state names (remove "HRT " or "TRT " prefix)
+            const getStateName = (name) => {
+                return name.replace(/^(HRT|TRT)\s+/i, '').trim();
+            };
+
+            // Build a map of states
+            const stateMap = new Map();
+            
+            hrtData.forEach(item => {
+                const state = getStateName(item.name);
+                if (!stateMap.has(state)) {
+                    stateMap.set(state, { state, hrt: null, trt: null });
+                }
+                stateMap.get(state).hrt = item.days;
+            });
+
+            trtData.forEach(item => {
+                const state = getStateName(item.name);
+                if (!stateMap.has(state)) {
+                    stateMap.set(state, { state, hrt: null, trt: null });
+                }
+                stateMap.get(state).trt = item.days;
+            });
+
+            // Convert to array and sort by state name
+            const states = Array.from(stateMap.values())
+                .filter(s => s.hrt !== null || s.trt !== null)
+                .sort((a, b) => a.state.localeCompare(b.state));
+
+            // Render the comparison list
+            const listEl = document.getElementById('stateComparisonList');
+            
+            if (states.length === 0) {
+                listEl.innerHTML = '<div class="empty-state">No state data available</div>';
+                return;
+            }
+
+            listEl.innerHTML = states.map(s => {
+                const hrtVal = s.hrt !== null ? `${s.hrt}d` : '--';
+                const trtVal = s.trt !== null ? `${s.trt}d` : '--';
+                
+                let diffText = '--';
+                let diffClass = 'tie';
+                
+                if (s.hrt !== null && s.trt !== null) {
+                    const diff = s.hrt - s.trt;
+                    if (diff < 0) {
+                        diffText = `HRT -${Math.abs(diff)}`;
+                        diffClass = 'hrt-better';
+                    } else if (diff > 0) {
+                        diffText = `TRT -${diff}`;
+                        diffClass = 'trt-better';
+                    } else {
+                        diffText = 'Tied';
+                        diffClass = 'tie';
+                    }
+                }
+
+                return `
+                    <div class="state-comparison-row">
+                        <div class="state-name">${s.state}</div>
+                        <div class="state-hrt">${hrtVal}</div>
+                        <div class="state-trt">${trtVal}</div>
+                        <div class="state-diff ${diffClass}">${diffText}</div>
+                    </div>
+                `;
+            }).join('');
         }
 
         function renderTrendChart() {
