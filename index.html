@@ -1291,89 +1291,6 @@
             MAX_DAYS: 14 // For bar chart scaling
         };
 
-        // ================================
-        // SAMPLE DATA (Fallback)
-        // ================================
-        const SAMPLE_DATA = [
-            // HRT States
-            { name: "HRT Alabama", days: 3, category: "hrt" },
-            { name: "HRT Alaska", days: 5, category: "hrt" },
-            { name: "HRT Arizona", days: 2, category: "hrt" },
-            { name: "HRT Arkansas", days: 4, category: "hrt" },
-            { name: "HRT California", days: 1, category: "hrt" },
-            { name: "HRT Colorado", days: 2, category: "hrt" },
-            { name: "HRT Connecticut", days: 6, category: "hrt" },
-            { name: "HRT Delaware", days: 3, category: "hrt" },
-            { name: "HRT Florida", days: 2, category: "hrt" },
-            { name: "HRT Georgia", days: 4, category: "hrt" },
-            { name: "HRT Hawaii", days: 7, category: "hrt" },
-            { name: "HRT Idaho", days: 3, category: "hrt" },
-            { name: "HRT Illinois", days: 2, category: "hrt" },
-            { name: "HRT Indiana", days: 5, category: "hrt" },
-            { name: "HRT Iowa", days: 4, category: "hrt" },
-            { name: "HRT Kansas", days: 3, category: "hrt" },
-            { name: "HRT Kentucky", days: 6, category: "hrt" },
-            { name: "HRT Louisiana", days: 4, category: "hrt" },
-            { name: "HRT Maine", days: 5, category: "hrt" },
-            { name: "HRT Maryland", days: 2, category: "hrt" },
-            { name: "HRT Massachusetts", days: 3, category: "hrt" },
-            { name: "HRT Michigan", days: 4, category: "hrt" },
-            { name: "HRT Minnesota", days: 2, category: "hrt" },
-            { name: "HRT Mississippi", days: 5, category: "hrt" },
-            { name: "HRT Missouri", days: 3, category: "hrt" },
-            { name: "HRT Montana", days: 6, category: "hrt" },
-            { name: "HRT Nebraska", days: 4, category: "hrt" },
-            { name: "HRT Nevada", days: 2, category: "hrt" },
-            { name: "HRT New Hampshire", days: 5, category: "hrt" },
-            { name: "HRT New Jersey", days: 3, category: "hrt" },
-            { name: "HRT New Mexico", days: 4, category: "hrt" },
-            { name: "HRT New York", days: 1, category: "hrt" },
-            { name: "HRT North Carolina", days: 3, category: "hrt" },
-            { name: "HRT North Dakota", days: 7, category: "hrt" },
-            { name: "HRT Ohio", days: 2, category: "hrt" },
-            { name: "HRT Oklahoma", days: 4, category: "hrt" },
-            { name: "HRT Oregon", days: 3, category: "hrt" },
-            { name: "HRT Pennsylvania", days: 2, category: "hrt" },
-            { name: "HRT Rhode Island", days: 5, category: "hrt" },
-            { name: "HRT South Carolina", days: 4, category: "hrt" },
-            { name: "HRT South Dakota", days: 6, category: "hrt" },
-            { name: "HRT Tennessee", days: 3, category: "hrt" },
-            { name: "HRT Texas", days: 1, category: "hrt" },
-            { name: "HRT Utah", days: 4, category: "hrt" },
-            { name: "HRT Vermont", days: 5, category: "hrt" },
-            { name: "HRT Virginia", days: 2, category: "hrt" },
-            { name: "HRT Washington", days: 3, category: "hrt" },
-            { name: "HRT West Virginia", days: 6, category: "hrt" },
-            { name: "HRT Wisconsin", days: 4, category: "hrt" },
-            { name: "HRT Wyoming", days: 5, category: "hrt" },
-            // TRT States
-            { name: "TRT Alabama", days: 4, category: "trt" },
-            { name: "TRT Alaska", days: 6, category: "trt" },
-            { name: "TRT Arizona", days: 3, category: "trt" },
-            { name: "TRT Arkansas", days: 5, category: "trt" },
-            { name: "TRT California", days: 2, category: "trt" },
-            { name: "TRT Colorado", days: 3, category: "trt" },
-            { name: "TRT Connecticut", days: 7, category: "trt" },
-            { name: "TRT Florida", days: 3, category: "trt" },
-            { name: "TRT Georgia", days: 5, category: "trt" },
-            { name: "TRT Illinois", days: 3, category: "trt" },
-            { name: "TRT New York", days: 2, category: "trt" },
-            { name: "TRT Ohio", days: 4, category: "trt" },
-            { name: "TRT Pennsylvania", days: 3, category: "trt" },
-            { name: "TRT Texas", days: 2, category: "trt" },
-            { name: "TRT Washington", days: 4, category: "trt" },
-            // Providers
-            { name: "Dr. Smith", days: 2, category: "provider" },
-            { name: "Dr. Johnson", days: 3, category: "provider" },
-            { name: "Dr. Williams", days: 5, category: "provider" },
-            { name: "Dr. Brown", days: 1, category: "provider" },
-            { name: "Dr. Jones", days: 4, category: "provider" },
-            { name: "Dr. Garcia", days: 2, category: "provider" },
-            { name: "Dr. Miller", days: 6, category: "provider" },
-            { name: "Dr. Davis", days: 3, category: "provider" },
-            { name: "Dr. Rodriguez", days: 4, category: "provider" },
-            { name: "Dr. Martinez", days: 2, category: "provider" }
-        ];
 
         // ================================
         // STATE
@@ -1382,7 +1299,6 @@
         let currentFilter = 'all';
         let pieChart = null;
         let lastSyncTime = null;
-        let isUsingSampleData = false;
 
         // ================================
         // DATA FETCHING
@@ -1411,7 +1327,6 @@
                 
                 if (parsedData.length > 0) {
                     currentData = parsedData;
-                    isUsingSampleData = false;
                     lastSyncTime = new Date();
                     
                     statusDot.classList.remove('syncing', 'error');
@@ -1425,15 +1340,9 @@
             } catch (error) {
                 console.error('Fetch error:', error);
                 
-                // Fall back to sample data if we have nothing
-                if (currentData.length === 0) {
-                    currentData = SAMPLE_DATA;
-                    isUsingSampleData = true;
-                }
-                
                 statusDot.classList.remove('syncing');
                 statusDot.classList.add('error');
-                syncText.textContent = 'Using sample data';
+                syncText.textContent = 'Failed to load';
                 document.getElementById('warningBanner').classList.add('visible');
             }
 
@@ -2278,7 +2187,6 @@
                 'HRT Count': currentData.filter(d => d.category === 'hrt').length,
                 'TRT Count': currentData.filter(d => d.category === 'trt').length,
                 'Provider Count': currentData.filter(d => d.category === 'provider').length,
-                'Using Sample Data': isUsingSampleData,
                 'Last Sync': lastSyncTime ? lastSyncTime.toISOString() : 'Never',
                 'Sheet ID': CONFIG.SHEET_ID,
                 'Sheet Name': CONFIG.SHEET_NAME,
