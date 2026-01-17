@@ -1315,34 +1315,93 @@
             statusDot.classList.add('syncing');
             syncText.textContent = 'Loading data...';
 
-            console.log('=== FETCH START (VERSION 5) ===');
+            console.log('=== FETCH START (VERSION 6) ===');
             
             try {
-                // Fetch the published HTML page and parse all tables
+                // Step 1: Fetch pubhtml to discover sheet GIDs
                 const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pubhtml`;
-                console.log('Fetching HTML:', htmlUrl);
+                console.log('Step 1: Fetching pubhtml to find GIDs...');
                 
-                const response = await fetch(htmlUrl);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const htmlResponse = await fetch(htmlUrl);
+                const html = await htmlResponse.text();
                 
-                const html = await response.text();
-                console.log('HTML length:', html.length);
+                // Extract GIDs from the HTML (they appear in sheet-button elements and URLs)
+                const gidMatches = html.match(/gid=(\d+)/g) || [];
+                const gids = [...new Set(gidMatches.map(m => m.replace('gid=', '')))];
+                console.log('Found GIDs:', gids);
                 
-                // Parse HTML to extract data from tables
-                const parsed = parsePublishedHTML(html);
+                // Also try to find sheet names
+                const sheetNameMatches = html.match(/sheet-name[^>]*>([^<]+)</g) || [];
+                console.log('Sheet names found:', sheetNameMatches);
                 
-                if (parsed.length > 0) {
-                    currentData = parsed;
+                // Step 2: Try to fetch CSV for each GID
+                let allData = [];
+                
+                // First try the default (no GID) - this gets Daily Summary
+                console.log('Step 2: Fetching CSV for each sheet...');
+                
+                for (const gid of gids) {
+                    syncText.textContent = `Loading sheet ${gid}...`;
+                    const csvUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`;
+                    console.log(`Trying GID ${gid}:`, csvUrl);
+                    
+                    try {
+                        const csvResponse = await fetch(csvUrl);
+                        if (csvResponse.ok) {
+                            const csvText = await csvResponse.text();
+                            if (csvText && !csvText.includes('<!DOCTYPE') && csvText.length > 50) {
+                                console.log(`GID ${gid} CSV length:`, csvText.length);
+                                console.log(`GID ${gid} preview:`, csvText.substring(0, 200));
+                                
+                                const parsed = parseCSV(csvText, `Sheet ${gid}`);
+                                if (parsed.length > 0) {
+                                    allData.push(...parsed);
+                                    console.log(`GID ${gid}: Found ${parsed.length} items`);
+                                }
+                            }
+                        } else {
+                            console.log(`GID ${gid} returned ${csvResponse.status}`);
+                        }
+                    } catch (e) {
+                        console.log(`GID ${gid} error:`, e.message);
+                    }
+                }
+                
+                // Step 3: Also parse the HTML tables directly as fallback
+                console.log('Step 3: Parsing HTML tables as fallback...');
+                const htmlParsed = parsePublishedHTML(html);
+                if (htmlParsed.length > 0) {
+                    allData.push(...htmlParsed);
+                    console.log('HTML parsing found:', htmlParsed.length, 'items');
+                }
+                
+                // Deduplicate
+                const seen = new Set();
+                const uniqueData = allData.filter(item => {
+                    const key = item.name.toLowerCase();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                
+                console.log('Total unique items:', uniqueData.length);
+                console.log('Categories:', {
+                    hrt: uniqueData.filter(d => d.category === 'hrt').length,
+                    trt: uniqueData.filter(d => d.category === 'trt').length,
+                    provider: uniqueData.filter(d => d.category === 'provider').length
+                });
+                
+                if (uniqueData.length > 0) {
+                    currentData = uniqueData;
                     lastSyncTime = new Date();
                     
                     statusDot.classList.remove('syncing', 'error');
-                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${parsed.length} items)`;
+                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${uniqueData.length} items)`;
                     warningBanner.classList.remove('visible');
                     
                     console.log('=== SUCCESS ===');
-                    console.log('Total items:', parsed.length);
                 } else {
-                    throw new Error('No valid data found in published sheet');
+                    throw new Error('No valid data found');
                 }
             } catch (error) {
                 console.error('=== FETCH ERROR ===', error);
@@ -1359,50 +1418,39 @@
         }
         
         function parsePublishedHTML(html) {
-            console.log('=== PARSING HTML ===');
+            console.log('=== PARSING HTML TABLES ===');
             const data = [];
             const seen = new Set();
             
-            // Create a DOM parser
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             
-            // Find all tables (each sheet tab becomes a table)
+            // Find all tables
             const tables = doc.querySelectorAll('table');
             console.log('Found tables:', tables.length);
             
             tables.forEach((table, tableIndex) => {
                 const rows = table.querySelectorAll('tr');
-                console.log(`Table ${tableIndex}: ${rows.length} rows`);
                 
-                // Look for rows with Category column (HRT, TRT, Provider)
-                let hasDataRows = false;
-                
-                rows.forEach((row, rowIndex) => {
+                rows.forEach((row) => {
                     const cells = row.querySelectorAll('td');
                     if (cells.length < 5) return;
                     
-                    // Get cell text content
                     const col0 = cells[0]?.textContent?.trim() || '';
                     const col1 = cells[1]?.textContent?.trim() || '';
                     const col2 = cells[2]?.textContent?.trim() || '';
-                    const col3 = cells[3]?.textContent?.trim() || '';
                     const col4 = cells[4]?.textContent?.trim() || '';
                     
-                    // Check if this is a data row (Category = HRT, TRT, or Provider)
+                    // Check for valid category
                     const category = col0.toUpperCase();
                     if (category !== 'HRT' && category !== 'TRT' && category !== 'PROVIDER') return;
                     
-                    hasDataRows = true;
-                    
-                    // Extract data: Category, Location, Name, URL, Days Out
                     const name = col2 || `${category} ${col1}`;
                     const daysMatch = col4.match(/(\d+)/);
                     const days = daysMatch ? parseInt(daysMatch[1], 10) : null;
                     
                     if (!name || days === null || days < 0 || days > 100) return;
                     
-                    // Dedupe by name
                     const key = name.toLowerCase();
                     if (seen.has(key)) return;
                     seen.add(key);
@@ -1414,22 +1462,7 @@
                         location: col1
                     });
                 });
-                
-                if (hasDataRows) {
-                    console.log(`Table ${tableIndex} has data rows, extracted so far:`, data.length);
-                }
             });
-            
-            console.log('Total parsed from HTML:', data.length);
-            console.log('Categories:', {
-                hrt: data.filter(d => d.category === 'hrt').length,
-                trt: data.filter(d => d.category === 'trt').length,
-                provider: data.filter(d => d.category === 'provider').length
-            });
-            
-            if (data.length > 0) {
-                console.log('Sample:', data.slice(0, 5));
-            }
             
             return data;
         }
