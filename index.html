@@ -1303,59 +1303,127 @@
         // ================================
         // DATA FETCHING
         // ================================
+        
+        // Known sheet GIDs - we'll try to discover these from the published HTML
+        let sheetGids = [];
+        
+        async function discoverSheets() {
+            try {
+                // Fetch the published HTML to find all sheet tabs
+                const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pubhtml`;
+                console.log('Discovering sheets from:', htmlUrl);
+                
+                const response = await fetch(htmlUrl);
+                const html = await response.text();
+                
+                // Extract sheet names and gids from the HTML
+                // Look for patterns like: <li id="sheet-button-XXXXXX">SheetName</li>
+                const sheetMatches = html.matchAll(/id="sheet-button-(\d+)"[^>]*>([^<]+)</g);
+                
+                sheetGids = [];
+                for (const match of sheetMatches) {
+                    sheetGids.push({
+                        gid: match[1],
+                        name: match[2].trim()
+                    });
+                }
+                
+                console.log('Discovered sheets:', sheetGids);
+                
+                // If no sheets found, use default gid 0
+                if (sheetGids.length === 0) {
+                    sheetGids = [{ gid: '0', name: 'Sheet1' }];
+                }
+                
+                return sheetGids;
+            } catch (e) {
+                console.error('Failed to discover sheets:', e);
+                return [{ gid: '0', name: 'Sheet1' }];
+            }
+        }
+        
+        async function fetchSheetByGid(gid, sheetName) {
+            const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`;
+            console.log(`Fetching sheet "${sheetName}" (gid=${gid}):`, url);
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const csvText = await response.text();
+            
+            // Check if we got HTML instead of CSV
+            if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
+                console.log(`Sheet "${sheetName}" returned HTML, skipping`);
+                return [];
+            }
+            
+            console.log(`Sheet "${sheetName}" CSV length:`, csvText.length);
+            return parseCSV(csvText, sheetName);
+        }
+        
         async function fetchSheetData() {
             const statusDot = document.getElementById('statusDot');
             const syncText = document.getElementById('syncText');
             const warningBanner = document.getElementById('warningBanner');
             
             statusDot.classList.add('syncing');
-            syncText.textContent = 'Syncing...';
+            syncText.textContent = 'Discovering sheets...';
 
             try {
-                // Use the published sheet CSV export URL
-                // Try with gid=0 for first sheet, then try Daily Summary
-                const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=0&single=true&output=csv`;
-                console.log('Fetching from:', url);
+                // First, discover all available sheets
+                await discoverSheets();
                 
-                const response = await fetch(url);
-                console.log('Response status:', response.status);
+                syncText.textContent = `Loading ${sheetGids.length} sheets...`;
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                // Fetch all sheets
+                const allData = [];
+                const sheetStats = [];
+                
+                for (const sheet of sheetGids) {
+                    try {
+                        const sheetData = await fetchSheetByGid(sheet.gid, sheet.name);
+                        if (sheetData.length > 0) {
+                            // Tag each item with its source sheet
+                            sheetData.forEach(item => item.sourceSheet = sheet.name);
+                            allData.push(...sheetData);
+                            sheetStats.push({ name: sheet.name, count: sheetData.length });
+                        }
+                    } catch (e) {
+                        console.error(`Failed to fetch sheet "${sheet.name}":`, e);
+                    }
                 }
-
-                const csvText = await response.text();
-                console.log('=== RAW CSV START ===');
-                console.log(csvText);
-                console.log('=== RAW CSV END ===');
-                console.log('CSV length:', csvText.length);
                 
-                // Check if we got an error page instead of CSV
-                if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
-                    throw new Error('Received HTML instead of CSV - sheet may not be published');
-                }
+                console.log('=== ALL SHEETS LOADED ===');
+                console.log('Sheet stats:', sheetStats);
+                console.log('Total items:', allData.length);
                 
-                const parsedData = parseCSV(csvText);
-                console.log('Parsed data count:', parsedData.length);
+                // Remove duplicates (same name)
+                const seen = new Set();
+                const uniqueData = allData.filter(item => {
+                    const key = item.name;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
                 
-                if (parsedData.length > 0) {
-                    currentData = parsedData;
+                console.log('Unique items after dedup:', uniqueData.length);
+                console.log('Categories:', {
+                    hrt: uniqueData.filter(d => d.category === 'hrt').length,
+                    trt: uniqueData.filter(d => d.category === 'trt').length,
+                    provider: uniqueData.filter(d => d.category === 'provider').length
+                });
+                
+                if (uniqueData.length > 0) {
+                    currentData = uniqueData;
                     lastSyncTime = new Date();
                     
                     statusDot.classList.remove('syncing', 'error');
-                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
+                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${sheetGids.length} sheets)`;
                     warningBanner.classList.remove('visible');
-                    
-                    console.log('Successfully loaded', parsedData.length, 'items');
-                    console.log('Categories:', {
-                        hrt: parsedData.filter(d => d.category === 'hrt').length,
-                        trt: parsedData.filter(d => d.category === 'trt').length,
-                        provider: parsedData.filter(d => d.category === 'provider').length
-                    });
                 } else {
-                    // Show raw CSV in error for debugging
-                    console.error('Parsing failed. Raw CSV:', csvText.substring(0, 2000));
-                    throw new Error('No valid data parsed from CSV. Check console for raw CSV.');
+                    throw new Error('No valid data found in any sheet');
                 }
             } catch (error) {
                 console.error('Fetch error:', error);
@@ -1371,13 +1439,24 @@
             document.getElementById('loadingOverlay').classList.add('hidden');
         }
 
-        function parseCSV(csvText) {
+        function parseCSV(csvText, sheetName = 'Unknown') {
             const lines = csvText.split('\n');
             const data = [];
-            const seen = new Set(); // Track duplicates
+            const seen = new Set();
 
-            console.log('=== PARSING CSV ===');
+            console.log(`=== PARSING SHEET: ${sheetName} ===`);
             console.log('Total lines:', lines.length);
+
+            // Try to detect if this is a multi-column format (Category, Location, Name, URL, Days)
+            // or a simple format (Name, Days)
+            let isMultiColumn = false;
+            for (let i = 0; i < Math.min(5, lines.length); i++) {
+                const line = lines[i].toLowerCase();
+                if (line.includes('category') && line.includes('name')) {
+                    isMultiColumn = true;
+                    break;
+                }
+            }
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
@@ -1385,68 +1464,74 @@
 
                 const values = parseCSVLine(line);
                 
-                // Get first two columns: State/Name, Days
-                const col0 = values[0]?.replace(/^"|"$/g, '').trim() || '';
-                const col1 = values[1]?.replace(/^"|"$/g, '').trim() || '';
-
-                // Skip section headers (emojis, titles)
-                if (col0.includes('WAIT TIMES') || 
-                    col0.includes('LOWEST') || 
-                    col0.includes('HIGHEST') ||
-                    col0.includes('Daily Summary') ||
-                    col0.includes('🟢') ||
-                    col0.includes('🟡') ||
-                    col0.includes('📊')) {
-                    continue;
-                }
-
-                // Skip column headers
-                if (col0.toLowerCase() === 'state' || col0.toLowerCase() === 'name') {
-                    continue;
-                }
-
-                // Skip empty rows
-                if (!col0) continue;
-
-                // Extract days from second column
-                const daysMatch = col1.match(/(\d+)/);
-                if (!daysMatch) continue;
-                
-                const days = parseInt(daysMatch[1], 10);
-                if (days < 0 || days > 30) continue;
-
-                // Determine category from the name
+                let name = '';
+                let days = null;
                 let category = 'provider';
-                const nameUpper = col0.toUpperCase();
-                
-                if (nameUpper.startsWith('HRT ')) {
-                    category = 'hrt';
-                } else if (nameUpper.startsWith('TRT ')) {
-                    category = 'trt';
-                } else if (nameUpper.startsWith('PROVIDER:') || nameUpper.startsWith('PROVIDER ')) {
-                    category = 'provider';
+
+                if (isMultiColumn && values.length >= 5) {
+                    // Multi-column format: Category, Location, Name, URL, Days Out
+                    const categoryRaw = values[0]?.replace(/^"|"$/g, '').trim() || '';
+                    name = values[2]?.replace(/^"|"$/g, '').trim() || '';
+                    const daysRaw = values[4]?.replace(/^"|"$/g, '').trim() || '';
+                    
+                    // Skip headers
+                    if (categoryRaw.toLowerCase() === 'category') continue;
+                    
+                    const daysMatch = daysRaw.match(/(\d+)/);
+                    if (daysMatch) days = parseInt(daysMatch[1], 10);
+                    
+                    if (categoryRaw.toUpperCase() === 'HRT') category = 'hrt';
+                    else if (categoryRaw.toUpperCase() === 'TRT') category = 'trt';
+                    else if (categoryRaw.toUpperCase() === 'PROVIDER') category = 'provider';
+                } else {
+                    // Simple format: Name, Days
+                    const col0 = values[0]?.replace(/^"|"$/g, '').trim() || '';
+                    const col1 = values[1]?.replace(/^"|"$/g, '').trim() || '';
+
+                    // Skip section headers
+                    if (col0.includes('WAIT TIMES') || 
+                        col0.includes('LOWEST') || 
+                        col0.includes('HIGHEST') ||
+                        col0.includes('Daily Summary') ||
+                        col0.includes('Summary') ||
+                        col0.includes('🟢') ||
+                        col0.includes('🟡') ||
+                        col0.includes('📊') ||
+                        col0.includes('📈')) {
+                        continue;
+                    }
+
+                    // Skip column headers
+                    if (col0.toLowerCase() === 'state' || col0.toLowerCase() === 'name' || col0.toLowerCase() === 'category') {
+                        continue;
+                    }
+
+                    name = col0;
+                    const daysMatch = col1.match(/(\d+)/);
+                    if (daysMatch) days = parseInt(daysMatch[1], 10);
+                    
+                    // Detect category from name
+                    const nameUpper = name.toUpperCase();
+                    if (nameUpper.startsWith('HRT ')) category = 'hrt';
+                    else if (nameUpper.startsWith('TRT ')) category = 'trt';
+                    else if (nameUpper.startsWith('PROVIDER:') || nameUpper.startsWith('PROVIDER ')) category = 'provider';
                 }
 
-                // Skip duplicates (same name might appear in multiple sections)
-                const key = `${col0}-${days}`;
+                // Validate
+                if (!name || days === null || days < 0 || days > 30) continue;
+
+                // Skip duplicates within this sheet
+                const key = name;
                 if (seen.has(key)) continue;
                 seen.add(key);
 
-                data.push({ 
-                    name: col0, 
-                    days, 
-                    category
-                });
+                data.push({ name, days, category });
             }
 
-            console.log('=== PARSE COMPLETE ===');
-            console.log('Successfully parsed:', data.length);
-            console.log('Categories:', {
-                hrt: data.filter(d => d.category === 'hrt').length,
-                trt: data.filter(d => d.category === 'trt').length,
-                provider: data.filter(d => d.category === 'provider').length
-            });
-            console.log('Sample data:', data.slice(0, 10));
+            console.log(`Sheet "${sheetName}" parsed:`, data.length, 'items');
+            if (data.length > 0) {
+                console.log('Sample:', data.slice(0, 3));
+            }
 
             return data;
         }
