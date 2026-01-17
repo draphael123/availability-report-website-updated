@@ -1306,24 +1306,34 @@
         async function fetchSheetData() {
             const statusDot = document.getElementById('statusDot');
             const syncText = document.getElementById('syncText');
+            const warningBanner = document.getElementById('warningBanner');
             
             statusDot.classList.add('syncing');
             syncText.textContent = 'Syncing...';
 
             try {
+                // Try the standard Google Sheets CSV export URL
                 const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.SHEET_NAME)}`;
                 console.log('Fetching from:', url);
                 
                 const response = await fetch(url);
+                console.log('Response status:', response.status);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
                 const csvText = await response.text();
                 console.log('CSV received, length:', csvText.length);
-                console.log('First 500 chars:', csvText.substring(0, 500));
+                console.log('First 1000 chars:', csvText.substring(0, 1000));
+                
+                // Check if we got an error page instead of CSV
+                if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
+                    throw new Error('Received HTML instead of CSV - sheet may not be published');
+                }
                 
                 const parsedData = parseCSV(csvText);
+                console.log('Parsed data count:', parsedData.length);
                 
                 if (parsedData.length > 0) {
                     currentData = parsedData;
@@ -1331,11 +1341,16 @@
                     
                     statusDot.classList.remove('syncing', 'error');
                     syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
-                    document.getElementById('warningBanner').classList.remove('visible');
+                    warningBanner.classList.remove('visible');
                     
-                    console.log('Successfully parsed', parsedData.length, 'items');
+                    console.log('Successfully loaded', parsedData.length, 'items');
+                    console.log('Categories:', {
+                        hrt: parsedData.filter(d => d.category === 'hrt').length,
+                        trt: parsedData.filter(d => d.category === 'trt').length,
+                        provider: parsedData.filter(d => d.category === 'provider').length
+                    });
                 } else {
-                    throw new Error('No valid data parsed from CSV');
+                    throw new Error('No valid data parsed from CSV. Check console for raw CSV.');
                 }
             } catch (error) {
                 console.error('Fetch error:', error);
@@ -1343,7 +1358,8 @@
                 statusDot.classList.remove('syncing');
                 statusDot.classList.add('error');
                 syncText.textContent = 'Failed to load';
-                document.getElementById('warningBanner').classList.add('visible');
+                warningBanner.innerHTML = `⚠️ ${error.message}. <a href="https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}" target="_blank" style="color: var(--warning-color); text-decoration: underline;">Open Sheet</a> → File → Share → Publish to web`;
+                warningBanner.classList.add('visible');
             }
 
             renderDashboard();
