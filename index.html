@@ -1461,8 +1461,30 @@
                     console.log('HTML tables parsed:', htmlParsed.length, 'items');
                 }
                 
-                // APPROACH 6: Fetch default CSV (no GID) as final fallback
-                console.log('\n[APPROACH 6] Fetching default CSV...');
+                // APPROACH 6: Try export endpoint if original key found
+                if (originalKey) {
+                    console.log('\n[APPROACH 6] Trying export endpoint...');
+                    for (const gid of gids) {
+                        try {
+                            const exportUrl = `https://docs.google.com/spreadsheets/d/${originalKey}/export?format=csv&gid=${gid}`;
+                            console.log('Trying export:', exportUrl);
+                            const resp = await fetch(exportUrl);
+                            if (resp.ok) {
+                                const csv = await resp.text();
+                                if (csv && csv.length > 100 && !csv.includes('<!DOCTYPE')) {
+                                    const parsed = parseCSV(csv, `export-${gid}`);
+                                    if (parsed.length > 0) {
+                                        allData.push(...parsed);
+                                        console.log(`Export GID ${gid}: ${parsed.length} items`);
+                                    }
+                                }
+                            }
+                        } catch (e) { }
+                    }
+                }
+                
+                // APPROACH 7: Fetch default CSV (no GID) as final fallback
+                console.log('\n[APPROACH 7] Fetching default CSV...');
                 try {
                     const defaultCsvUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
                     const resp = await fetch(defaultCsvUrl);
@@ -1550,66 +1572,104 @@
             return lines.join('\n');
         }
         
-        // Parse HTML tables from pubhtml
+        // Parse HTML tables from pubhtml - thorough extraction
         function parseHTMLTables(html) {
             const data = [];
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             
-            // Google Sheets pubhtml uses specific class names
-            const tables = doc.querySelectorAll('table');
-            console.log('Found', tables.length, 'tables in HTML');
+            console.log('=== PARSING HTML TABLES ===');
+            
+            // Try multiple selectors to find tables
+            const tableSelectors = ['table', '.waffle', '[role="grid"]', '.sheet-table'];
+            let tables = [];
+            for (const selector of tableSelectors) {
+                const found = doc.querySelectorAll(selector);
+                if (found.length > tables.length) {
+                    tables = found;
+                }
+            }
+            console.log('Found', tables.length, 'tables');
+            
+            // Also look for data in raw HTML using regex (backup)
+            const rawDataMatches = html.match(/(HRT|TRT|Provider)[,\s]+(\w+)[,\s]+[^,]+[,\s]+[^,]*[,\s]+(\d+)/gi) || [];
+            console.log('Raw regex matches:', rawDataMatches.length);
+            
+            for (const match of rawDataMatches) {
+                const parts = match.split(/[,\s]+/).filter(p => p);
+                if (parts.length >= 3) {
+                    const catRaw = parts[0].toUpperCase();
+                    if (catRaw === 'HRT' || catRaw === 'TRT' || catRaw === 'PROVIDER') {
+                        const location = parts[1];
+                        const name = `${catRaw} ${location}`;
+                        // Find the number in the remaining parts
+                        for (let i = 2; i < parts.length; i++) {
+                            const num = parseInt(parts[i], 10);
+                            if (!isNaN(num) && num >= 0 && num <= 100) {
+                                data.push({
+                                    name,
+                                    days: num,
+                                    category: catRaw.toLowerCase(),
+                                    location
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             
             tables.forEach((table, idx) => {
-                const rows = table.querySelectorAll('tr');
+                const rows = table.querySelectorAll('tr, [role="row"]');
                 let tableHasData = false;
                 
                 rows.forEach(row => {
-                    // Try both td and th cells
-                    const cells = row.querySelectorAll('td, th');
+                    const cells = row.querySelectorAll('td, th, [role="gridcell"]');
                     if (cells.length < 2) return;
                     
-                    // Get all cell values
-                    const values = Array.from(cells).map(c => c.textContent?.trim() || '');
+                    const values = Array.from(cells).map(c => {
+                        // Get text, handling nested elements
+                        return (c.innerText || c.textContent || '').trim();
+                    });
                     
-                    // Look for HRT/TRT/Provider in any cell position
                     let category = null;
                     let name = null;
                     let days = null;
                     let location = null;
                     
-                    // Check if first column is category
-                    const col0Upper = values[0].toUpperCase();
+                    const col0Upper = (values[0] || '').toUpperCase();
+                    
+                    // Format 1: Category | Location | Name | URL | Days
                     if (col0Upper === 'HRT' || col0Upper === 'TRT' || col0Upper === 'PROVIDER') {
                         category = col0Upper.toLowerCase();
                         location = values[1] || '';
                         name = values[2] || `${col0Upper} ${location}`;
-                        // Look for days in remaining columns
-                        for (let i = 3; i < values.length; i++) {
-                            const match = values[i].match(/^(\d+)$/);
+                        // Find days in columns 3+
+                        for (let i = 3; i < Math.min(values.length, 10); i++) {
+                            const match = values[i].match(/^(\d+)/);
                             if (match) {
                                 days = parseInt(match[1], 10);
                                 break;
                             }
                         }
                     }
-                    // Also check for "HRT State" or "TRT State" format in name column
+                    // Format 2: "HRT State" | Days
                     else if (values[0].match(/^(HRT|TRT)\s+\w+/i)) {
-                        const nameMatch = values[0].match(/^(HRT|TRT)\s+(.+)/i);
-                        if (nameMatch) {
-                            category = nameMatch[1].toLowerCase();
+                        const m = values[0].match(/^(HRT|TRT)\s+(.+)/i);
+                        if (m) {
+                            category = m[1].toLowerCase();
                             name = values[0];
-                            location = nameMatch[2];
-                            const daysMatch = values[1]?.match(/(\d+)/);
-                            if (daysMatch) days = parseInt(daysMatch[1], 10);
+                            location = m[2];
+                            const dm = values[1]?.match(/(\d+)/);
+                            if (dm) days = parseInt(dm[1], 10);
                         }
                     }
-                    // Check for Provider format
+                    // Format 3: "Provider: Name" | Days
                     else if (values[0].match(/^Provider/i)) {
                         category = 'provider';
                         name = values[0];
-                        const daysMatch = values[1]?.match(/(\d+)/);
-                        if (daysMatch) days = parseInt(daysMatch[1], 10);
+                        const dm = values[1]?.match(/(\d+)/);
+                        if (dm) days = parseInt(dm[1], 10);
                     }
                     
                     if (category && name && days !== null && days >= 0 && days <= 100) {
@@ -1618,11 +1678,10 @@
                     }
                 });
                 
-                if (tableHasData) {
-                    console.log(`Table ${idx}: Found data rows`);
-                }
+                if (tableHasData) console.log(`Table ${idx}: has data`);
             });
             
+            console.log('HTML parsing total:', data.length, 'items');
             return data;
         }
 
