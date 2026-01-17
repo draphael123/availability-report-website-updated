@@ -1304,63 +1304,26 @@
         // DATA FETCHING
         // ================================
         
-        // Known sheet GIDs - we'll try to discover these from the published HTML
-        let sheetGids = [];
-        
-        async function discoverSheets() {
-            try {
-                // Fetch the published HTML to find all sheet tabs
-                const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pubhtml`;
-                console.log('Discovering sheets from:', htmlUrl);
-                
-                const response = await fetch(htmlUrl);
-                const html = await response.text();
-                
-                // Extract sheet names and gids from the HTML
-                // Look for patterns like: <li id="sheet-button-XXXXXX">SheetName</li>
-                const sheetMatches = html.matchAll(/id="sheet-button-(\d+)"[^>]*>([^<]+)</g);
-                
-                sheetGids = [];
-                for (const match of sheetMatches) {
-                    sheetGids.push({
-                        gid: match[1],
-                        name: match[2].trim()
-                    });
-                }
-                
-                console.log('Discovered sheets:', sheetGids);
-                
-                // If no sheets found, use default gid 0
-                if (sheetGids.length === 0) {
-                    sheetGids = [{ gid: '0', name: 'Sheet1' }];
-                }
-                
-                return sheetGids;
-            } catch (e) {
-                console.error('Failed to discover sheets:', e);
-                return [{ gid: '0', name: 'Sheet1' }];
-            }
-        }
-        
-        async function fetchSheetByGid(gid, sheetName) {
+        async function fetchSheetByGid(gid) {
             const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`;
-            console.log(`Fetching sheet "${sheetName}" (gid=${gid}):`, url);
+            console.log(`Fetching gid=${gid}:`, url);
             
             const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                console.log(`gid=${gid} returned HTTP ${response.status}`);
+                return null;
             }
             
             const csvText = await response.text();
             
             // Check if we got HTML instead of CSV
             if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
-                console.log(`Sheet "${sheetName}" returned HTML, skipping`);
-                return [];
+                console.log(`gid=${gid} returned HTML, skipping`);
+                return null;
             }
             
-            console.log(`Sheet "${sheetName}" CSV length:`, csvText.length);
-            return parseCSV(csvText, sheetName);
+            console.log(`gid=${gid} CSV length:`, csvText.length);
+            return csvText;
         }
         
         async function fetchSheetData() {
@@ -1369,35 +1332,34 @@
             const warningBanner = document.getElementById('warningBanner');
             
             statusDot.classList.add('syncing');
-            syncText.textContent = 'Discovering sheets...';
+            syncText.textContent = 'Loading data...';
 
             try {
-                // First, discover all available sheets
-                await discoverSheets();
-                
-                syncText.textContent = `Loading ${sheetGids.length} sheets...`;
-                
-                // Fetch all sheets
+                // Try fetching multiple GIDs (0 = first sheet, then try others)
+                const gidsToTry = [0, 1, 2, 3, 4, 5];
                 const allData = [];
-                const sheetStats = [];
+                let sheetsLoaded = 0;
                 
-                for (const sheet of sheetGids) {
+                for (const gid of gidsToTry) {
                     try {
-                        const sheetData = await fetchSheetByGid(sheet.gid, sheet.name);
-                        if (sheetData.length > 0) {
-                            // Tag each item with its source sheet
-                            sheetData.forEach(item => item.sourceSheet = sheet.name);
-                            allData.push(...sheetData);
-                            sheetStats.push({ name: sheet.name, count: sheetData.length });
+                        const csvText = await fetchSheetByGid(gid);
+                        if (csvText && csvText.length > 50) {
+                            const sheetData = parseCSV(csvText, `Sheet ${gid}`);
+                            if (sheetData.length > 0) {
+                                sheetData.forEach(item => item.sourceGid = gid);
+                                allData.push(...sheetData);
+                                sheetsLoaded++;
+                                console.log(`Sheet gid=${gid}: ${sheetData.length} items`);
+                            }
                         }
                     } catch (e) {
-                        console.error(`Failed to fetch sheet "${sheet.name}":`, e);
+                        console.log(`gid=${gid} failed:`, e.message);
                     }
                 }
                 
-                console.log('=== ALL SHEETS LOADED ===');
-                console.log('Sheet stats:', sheetStats);
-                console.log('Total items:', allData.length);
+                console.log('=== LOADING COMPLETE ===');
+                console.log('Sheets loaded:', sheetsLoaded);
+                console.log('Total raw items:', allData.length);
                 
                 // Remove duplicates (same name)
                 const seen = new Set();
@@ -1408,7 +1370,7 @@
                     return true;
                 });
                 
-                console.log('Unique items after dedup:', uniqueData.length);
+                console.log('Unique items:', uniqueData.length);
                 console.log('Categories:', {
                     hrt: uniqueData.filter(d => d.category === 'hrt').length,
                     trt: uniqueData.filter(d => d.category === 'trt').length,
@@ -1420,10 +1382,10 @@
                     lastSyncTime = new Date();
                     
                     statusDot.classList.remove('syncing', 'error');
-                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${sheetGids.length} sheets)`;
+                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
                     warningBanner.classList.remove('visible');
                 } else {
-                    throw new Error('No valid data found in any sheet');
+                    throw new Error('No valid data found. Check console for details.');
                 }
             } catch (error) {
                 console.error('Fetch error:', error);
