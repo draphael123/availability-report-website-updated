@@ -1304,28 +1304,6 @@
         // DATA FETCHING
         // ================================
         
-        async function fetchSheetByGid(gid) {
-            const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`;
-            console.log(`Fetching gid=${gid}:`, url);
-            
-            const response = await fetch(url);
-            if (!response.ok) {
-                console.log(`gid=${gid} returned HTTP ${response.status}`);
-                return null;
-            }
-            
-            const csvText = await response.text();
-            
-            // Check if we got HTML instead of CSV
-            if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
-                console.log(`gid=${gid} returned HTML, skipping`);
-                return null;
-            }
-            
-            console.log(`gid=${gid} CSV length:`, csvText.length);
-            return csvText;
-        }
-        
         async function fetchSheetData() {
             const statusDot = document.getElementById('statusDot');
             const syncText = document.getElementById('syncText');
@@ -1335,57 +1313,46 @@
             syncText.textContent = 'Loading data...';
 
             try {
-                // Try fetching multiple GIDs (0 = first sheet, then try others)
-                const gidsToTry = [0, 1, 2, 3, 4, 5];
-                const allData = [];
-                let sheetsLoaded = 0;
+                // Use the simple published CSV URL (exports the entire published document)
+                const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
+                console.log('Fetching CSV from:', url);
                 
-                for (const gid of gidsToTry) {
-                    try {
-                        const csvText = await fetchSheetByGid(gid);
-                        if (csvText && csvText.length > 50) {
-                            const sheetData = parseCSV(csvText, `Sheet ${gid}`);
-                            if (sheetData.length > 0) {
-                                sheetData.forEach(item => item.sourceGid = gid);
-                                allData.push(...sheetData);
-                                sheetsLoaded++;
-                                console.log(`Sheet gid=${gid}: ${sheetData.length} items`);
-                            }
-                        }
-                    } catch (e) {
-                        console.log(`gid=${gid} failed:`, e.message);
-                    }
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
                 
-                console.log('=== LOADING COMPLETE ===');
-                console.log('Sheets loaded:', sheetsLoaded);
-                console.log('Total raw items:', allData.length);
+                const csvText = await response.text();
+                console.log('CSV received, length:', csvText.length);
+                console.log('First 1000 chars:', csvText.substring(0, 1000));
                 
-                // Remove duplicates (same name)
-                const seen = new Set();
-                const uniqueData = allData.filter(item => {
-                    const key = item.name;
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                });
+                // Check if we got HTML instead of CSV
+                if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
+                    throw new Error('Received HTML instead of CSV');
+                }
                 
-                console.log('Unique items:', uniqueData.length);
-                console.log('Categories:', {
-                    hrt: uniqueData.filter(d => d.category === 'hrt').length,
-                    trt: uniqueData.filter(d => d.category === 'trt').length,
-                    provider: uniqueData.filter(d => d.category === 'provider').length
-                });
+                const parsedData = parseCSV(csvText, 'Published Sheet');
+                console.log('Parsed items:', parsedData.length);
                 
-                if (uniqueData.length > 0) {
-                    currentData = uniqueData;
+                if (parsedData.length > 0) {
+                    currentData = parsedData;
                     lastSyncTime = new Date();
                     
                     statusDot.classList.remove('syncing', 'error');
                     syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
                     warningBanner.classList.remove('visible');
+                    
+                    console.log('=== SUCCESS ===');
+                    console.log('Total items:', parsedData.length);
+                    console.log('Categories:', {
+                        hrt: parsedData.filter(d => d.category === 'hrt').length,
+                        trt: parsedData.filter(d => d.category === 'trt').length,
+                        provider: parsedData.filter(d => d.category === 'provider').length
+                    });
                 } else {
-                    throw new Error('No valid data found. Check console for details.');
+                    throw new Error('No valid data parsed from CSV');
                 }
             } catch (error) {
                 console.error('Fetch error:', error);
