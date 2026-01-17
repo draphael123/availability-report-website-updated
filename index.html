@@ -1752,11 +1752,11 @@
 
                 // Determine category from category column or name
                 let category = 'provider';
-                if (categoryStr === 'HRT' || name.toUpperCase().startsWith('HRT')) {
+                if (categoryStr === 'HRT' || name.toUpperCase().startsWith('HRT ') || name.toUpperCase().startsWith('HRT')) {
                     category = 'hrt';
-                } else if (categoryStr === 'TRT' || name.toUpperCase().startsWith('TRT')) {
+                } else if (categoryStr === 'TRT' || name.toUpperCase().startsWith('TRT ') || name.toUpperCase().startsWith('TRT')) {
                     category = 'trt';
-                } else if (categoryStr === 'PROVIDER' || name.toLowerCase().includes('dr.') || name.toLowerCase().includes('dr ')) {
+                } else if (categoryStr === 'PROVIDER' || name.toUpperCase().startsWith('PROVIDER:') || name.toUpperCase().startsWith('PROVIDER ') || name.toLowerCase().includes('dr.') || name.toLowerCase().includes('dr ')) {
                     category = 'provider';
                 }
 
