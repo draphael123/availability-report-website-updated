@@ -925,8 +925,14 @@
             <div class="bar-chart" id="barChart"></div>
         </div>
 
+        <!-- Debug Panel -->
+        <div class="card" id="debugPanel" style="display: none; margin-bottom: 24px;">
+            <div class="card-title">🔧 Debug Info (click footer to toggle)</div>
+            <div id="debugContent" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; color: var(--text-secondary);"></div>
+        </div>
+
         <!-- Footer -->
-        <footer class="footer">
+        <footer class="footer" onclick="toggleDebug()" style="cursor: pointer;">
             <div class="footer-legend">
                 <div class="footer-item">
                     <div class="footer-dot hrt"></div>
@@ -941,7 +947,7 @@
                     <span>Provider - Individual Practitioners</span>
                 </div>
             </div>
-            <div class="footer-note">Data refreshes automatically every 5 minutes • Historical data cached locally</div>
+            <div class="footer-note">Data refreshes automatically every 5 minutes • Historical data cached locally • Click here for debug info</div>
         </footer>
     </div>
 
@@ -1294,6 +1300,9 @@
                 document.getElementById('infoBanner').classList.remove('visible');
             }
 
+            // Fetch raw CSV for debugging
+            fetchRawCSV();
+            
             renderDashboard();
             document.getElementById('loadingOverlay').classList.add('hidden');
         }
@@ -1301,34 +1310,110 @@
         function parseCSV(csvText) {
             const lines = csvText.split('\n');
             const data = [];
+            let debugInfo = { total: 0, parsed: 0, skipped: [], headerRow: null };
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
+                debugInfo.total++;
 
                 const values = parseCSVLine(line);
-                if (values.length < 2) continue;
-
-                const name = values[0].replace(/^"|"$/g, '').trim();
-                const valueStr = values[1].replace(/^"|"$/g, '').trim();
-
-                if (!name || name.toLowerCase() === 'name' || name.toLowerCase() === 'state') continue;
-
-                const daysMatch = valueStr.match(/(\d+)/);
-                if (!daysMatch) continue;
-
-                const days = parseInt(daysMatch[1], 10);
-                if (isNaN(days)) continue;
-
+                
+                // Try to find name and days columns
+                let name = null;
+                let days = null;
                 let category = 'provider';
-                if (name.toUpperCase().startsWith('HRT ')) {
-                    category = 'hrt';
-                } else if (name.toUpperCase().startsWith('TRT ')) {
-                    category = 'trt';
+
+                // Check each column for data
+                for (let col = 0; col < values.length; col++) {
+                    const val = values[col].replace(/^"|"$/g, '').trim();
+                    
+                    // Skip empty values
+                    if (!val) continue;
+                    
+                    // Skip header-like values
+                    const lowerVal = val.toLowerCase();
+                    if (lowerVal === 'name' || lowerVal === 'state' || lowerVal === 'url' || 
+                        lowerVal === 'days' || lowerVal === 'wait' || lowerVal === 'category' ||
+                        lowerVal === 'booking page' || lowerVal === 'days out') {
+                        debugInfo.headerRow = i;
+                        continue;
+                    }
+                    
+                    // Check if this looks like a days value (number, possibly with emoji)
+                    const daysMatch = val.match(/^[^\d]*(\d+)[^\d]*$/);
+                    if (daysMatch && !name) {
+                        // This might be a days value, but only if we already have a name
+                        continue;
+                    }
+                    
+                    // Check if this contains HRT or TRT (this is likely a name)
+                    if (val.toUpperCase().includes('HRT') || val.toUpperCase().includes('TRT') || 
+                        val.includes('Dr.') || val.includes('Dr ') || val.length > 3) {
+                        
+                        // This looks like a name - now find the days value
+                        name = val;
+                        
+                        // Detect category
+                        if (val.toUpperCase().includes('HRT')) {
+                            category = 'hrt';
+                        } else if (val.toUpperCase().includes('TRT')) {
+                            category = 'trt';
+                        } else {
+                            category = 'provider';
+                        }
+                        
+                        // Look for days in remaining columns
+                        for (let j = col + 1; j < values.length; j++) {
+                            const nextVal = values[j].replace(/^"|"$/g, '').trim();
+                            const nextDaysMatch = nextVal.match(/(\d+)/);
+                            if (nextDaysMatch) {
+                                days = parseInt(nextDaysMatch[1], 10);
+                                break;
+                            }
+                        }
+                        
+                        // Also check previous columns for days (in case days comes before name)
+                        if (days === null) {
+                            for (let j = 0; j < col; j++) {
+                                const prevVal = values[j].replace(/^"|"$/g, '').trim();
+                                const prevDaysMatch = prevVal.match(/^[^\d]*(\d+)[^\d]*$/);
+                                if (prevDaysMatch) {
+                                    days = parseInt(prevDaysMatch[1], 10);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        break;
+                    }
                 }
 
-                data.push({ name, days, category });
+                // If we found a name but no days, check if days is embedded in the name
+                if (name && days === null) {
+                    const embeddedDays = name.match(/(\d+)\s*(?:day|d)?s?\s*$/i);
+                    if (embeddedDays) {
+                        days = parseInt(embeddedDays[1], 10);
+                    }
+                }
+
+                // Add to data if we have both name and days
+                if (name && days !== null && !isNaN(days) && days >= 0 && days < 100) {
+                    data.push({ name, days, category });
+                    debugInfo.parsed++;
+                } else if (name) {
+                    debugInfo.skipped.push({ row: i, name, days, reason: 'missing days' });
+                }
             }
+
+            // Log debug info
+            console.log('CSV Parse Debug:', {
+                totalLines: debugInfo.total,
+                parsedRows: debugInfo.parsed,
+                headerRow: debugInfo.headerRow,
+                skippedSample: debugInfo.skipped.slice(0, 5),
+                dataSample: data.slice(0, 5)
+            });
 
             return data;
         }
@@ -1938,6 +2023,62 @@
 
         function truncateName(name) {
             return name.length > 20 ? name.substring(0, 20) + '...' : name;
+        }
+
+        // ================================
+        // DEBUG
+        // ================================
+        let debugData = { rawCSV: '', parseInfo: {} };
+        
+        function toggleDebug() {
+            const panel = document.getElementById('debugPanel');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                updateDebugPanel();
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        function updateDebugPanel() {
+            const content = document.getElementById('debugContent');
+            const info = {
+                'Current Data Count': currentData.length,
+                'HRT Count': currentData.filter(d => d.category === 'hrt').length,
+                'TRT Count': currentData.filter(d => d.category === 'trt').length,
+                'Provider Count': currentData.filter(d => d.category === 'provider').length,
+                'Historical Days': Object.keys(historicalData).length,
+                'Detected Date Format': detectedDateFormat || 'None',
+                'Using Sample Data': isUsingSampleData,
+                'Last Sync': lastSyncTime ? lastSyncTime.toISOString() : 'Never',
+                'Sheet ID': CONFIG.SHEET_ID,
+                'Sheet Name': CONFIG.SHEET_NAME,
+            };
+            
+            let text = '=== PARSED DATA SUMMARY ===\n';
+            text += Object.entries(info).map(([k, v]) => `${k}: ${v}`).join('\n');
+            
+            text += '\n\n=== PARSED DATA (all items) ===\n';
+            text += currentData.map((d, i) => `${i+1}. [${d.category}] ${d.name} = ${d.days}d`).join('\n');
+            
+            if (debugData.rawCSV) {
+                text += '\n\n=== RAW CSV (first 50 lines) ===\n';
+                text += debugData.rawCSV.split('\n').slice(0, 50).map((line, i) => `${i+1}: ${line}`).join('\n');
+            }
+            
+            content.textContent = text;
+        }
+
+        async function fetchRawCSV() {
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.SHEET_NAME)}`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    debugData.rawCSV = await response.text();
+                }
+            } catch (e) {
+                console.error('Failed to fetch raw CSV:', e);
+            }
         }
 
         // ================================
