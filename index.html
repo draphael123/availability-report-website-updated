@@ -1407,8 +1407,20 @@
         // ================================
         // LOCAL STORAGE
         // ================================
+        const CACHE_VERSION = 2; // Increment this to force cache clear
+        
         function loadHistoryFromStorage() {
             try {
+                // Check cache version
+                const storedVersion = localStorage.getItem(CONFIG.STORAGE_KEY + '_version');
+                if (storedVersion !== String(CACHE_VERSION)) {
+                    console.log('Cache version mismatch, clearing old data');
+                    localStorage.removeItem(CONFIG.STORAGE_KEY);
+                    localStorage.setItem(CONFIG.STORAGE_KEY + '_version', String(CACHE_VERSION));
+                    historicalData = {};
+                    return;
+                }
+                
                 const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
                 if (stored) {
                     historicalData = JSON.parse(stored);
@@ -1645,45 +1657,25 @@
         function parseCSV(csvText) {
             const lines = csvText.split('\n');
             const data = [];
-            let debugInfo = { total: 0, parsed: 0, skipped: [], headerRow: null, columns: {} };
+            let debugInfo = { total: 0, parsed: 0, skipped: [], rawLines: [] };
 
-            // First pass: find header row and column indices
-            let categoryCol = -1, nameCol = -1, daysCol = -1, locationCol = -1;
+            // Your sheet structure:
+            // Column A (0): Category - "HRT", "TRT", "Provider"
+            // Column B (1): Location - "Arizona", "California", etc.
+            // Column C (2): Name - "HRT Arizona", "TRT California", "Provider: Name"
+            // Column D (3): URL
+            // Column E (4): Days Out - "✓ 2", "↓ 4", etc.
             
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue;
-                
-                const values = parseCSVLine(line);
-                
-                // Look for header row
-                for (let col = 0; col < values.length; col++) {
-                    const val = values[col].replace(/^"|"$/g, '').trim().toLowerCase();
-                    if (val === 'category') categoryCol = col;
-                    if (val === 'name') nameCol = col;
-                    if (val === 'location') locationCol = col;
-                    if (val === 'days out' || val === 'days' || val === 'wait') daysCol = col;
-                }
-                
-                if (nameCol >= 0 && daysCol >= 0) {
-                    debugInfo.headerRow = i;
-                    debugInfo.columns = { category: categoryCol, name: nameCol, days: daysCol, location: locationCol };
-                    break;
-                }
-            }
+            // Hardcoded column indices for your specific sheet
+            const CATEGORY_COL = 0;
+            const LOCATION_COL = 1;
+            const NAME_COL = 2;
+            const URL_COL = 3;
+            const DAYS_COL = 4;
 
-            // If no header found, use defaults based on common structures
-            if (nameCol < 0) {
-                // Try to detect from first data row
-                nameCol = 2;  // Column C
-                daysCol = 4;  // Column E  
-                categoryCol = 0; // Column A
-                locationCol = 1; // Column B
-            }
+            console.log('Parsing CSV with', lines.length, 'lines');
+            debugInfo.rawLines = lines.slice(0, 5);
 
-            console.log('Detected columns:', { categoryCol, nameCol, daysCol, locationCol });
-
-            // Second pass: parse data rows
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
@@ -1691,86 +1683,76 @@
 
                 const values = parseCSVLine(line);
                 
+                // Log first few rows for debugging
+                if (i < 5) {
+                    console.log(`Row ${i}:`, values.slice(0, 6));
+                }
+
+                // Skip rows with fewer than 5 columns
+                if (values.length < 5) continue;
+
+                // Get raw values
+                const categoryRaw = values[CATEGORY_COL]?.replace(/^"|"$/g, '').trim() || '';
+                const locationRaw = values[LOCATION_COL]?.replace(/^"|"$/g, '').trim() || '';
+                const nameRaw = values[NAME_COL]?.replace(/^"|"$/g, '').trim() || '';
+                const daysRaw = values[DAYS_COL]?.replace(/^"|"$/g, '').trim() || '';
+
                 // Skip header row
-                if (i === debugInfo.headerRow) continue;
-                
-                // Skip summary rows (contain "Summary" or "Total")
-                const firstVal = values[0]?.replace(/^"|"$/g, '').trim() || '';
-                if (firstVal.toLowerCase().includes('summary') || firstVal.toLowerCase().includes('total')) {
+                if (categoryRaw.toLowerCase() === 'category' || nameRaw.toLowerCase() === 'name') {
                     continue;
                 }
 
-                // Get values from detected columns
-                let name = nameCol >= 0 && nameCol < values.length 
-                    ? values[nameCol].replace(/^"|"$/g, '').trim() 
-                    : null;
-                    
-                let daysStr = daysCol >= 0 && daysCol < values.length 
-                    ? values[daysCol].replace(/^"|"$/g, '').trim() 
-                    : null;
-                    
-                let categoryStr = categoryCol >= 0 && categoryCol < values.length 
-                    ? values[categoryCol].replace(/^"|"$/g, '').trim().toUpperCase()
-                    : null;
-
-                let location = locationCol >= 0 && locationCol < values.length
-                    ? values[locationCol].replace(/^"|"$/g, '').trim()
-                    : null;
-
-                // Skip if no name or if name looks like a header
-                if (!name || name.toLowerCase() === 'name' || name.toLowerCase() === 'state') continue;
-
-                // Extract days number from value like "✓ 2" or "↓ 4" or "⚡ 1" or just "3"
-                let days = null;
-                if (daysStr) {
-                    const daysMatch = daysStr.match(/(\d+)/);
-                    if (daysMatch) {
-                        days = parseInt(daysMatch[1], 10);
-                    }
+                // Skip summary rows
+                if (categoryRaw.toLowerCase().includes('summary') || 
+                    nameRaw.toLowerCase().includes('summary') ||
+                    categoryRaw.toLowerCase().includes('total')) {
+                    continue;
                 }
 
-                // If no days found in days column, try to find it elsewhere
-                if (days === null) {
-                    for (let col = 0; col < values.length; col++) {
-                        if (col === nameCol || col === categoryCol || col === locationCol) continue;
-                        const val = values[col].replace(/^"|"$/g, '').trim();
-                        // Look for short values that are just numbers or emoji + number
-                        if (val.length <= 10) {
-                            const match = val.match(/(\d+)/);
-                            if (match) {
-                                const num = parseInt(match[1], 10);
-                                if (num >= 0 && num < 30) { // Reasonable days range
-                                    days = num;
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                // Skip empty names
+                if (!nameRaw) continue;
+
+                // Extract days from "✓ 2" or "↓ 4" or "⚡ 1" format
+                const daysMatch = daysRaw.match(/(\d+)/);
+                if (!daysMatch) {
+                    debugInfo.skipped.push({ row: i, name: nameRaw, reason: 'no days found', daysRaw });
+                    continue;
                 }
+                const days = parseInt(daysMatch[1], 10);
 
-                if (days === null || isNaN(days)) continue;
-
-                // Determine category from category column or name
+                // Determine category
                 let category = 'provider';
-                if (categoryStr === 'HRT' || name.toUpperCase().startsWith('HRT ') || name.toUpperCase().startsWith('HRT')) {
+                const categoryUpper = categoryRaw.toUpperCase();
+                const nameUpper = nameRaw.toUpperCase();
+                
+                if (categoryUpper === 'HRT' || nameUpper.startsWith('HRT ')) {
                     category = 'hrt';
-                } else if (categoryStr === 'TRT' || name.toUpperCase().startsWith('TRT ') || name.toUpperCase().startsWith('TRT')) {
+                } else if (categoryUpper === 'TRT' || nameUpper.startsWith('TRT ')) {
                     category = 'trt';
-                } else if (categoryStr === 'PROVIDER' || name.toUpperCase().startsWith('PROVIDER:') || name.toUpperCase().startsWith('PROVIDER ') || name.toLowerCase().includes('dr.') || name.toLowerCase().includes('dr ')) {
+                } else if (categoryUpper === 'PROVIDER' || nameUpper.startsWith('PROVIDER')) {
                     category = 'provider';
                 }
 
-                data.push({ name, days, category, location });
+                data.push({ 
+                    name: nameRaw, 
+                    days, 
+                    category, 
+                    location: locationRaw 
+                });
                 debugInfo.parsed++;
             }
 
             // Log debug info
-            console.log('CSV Parse Debug:', {
+            console.log('CSV Parse Result:', {
                 totalLines: debugInfo.total,
                 parsedRows: debugInfo.parsed,
-                headerRow: debugInfo.headerRow,
-                columns: debugInfo.columns,
-                dataSample: data.slice(0, 5)
+                skippedSample: debugInfo.skipped.slice(0, 3),
+                dataSample: data.slice(0, 5),
+                categories: {
+                    hrt: data.filter(d => d.category === 'hrt').length,
+                    trt: data.filter(d => d.category === 'trt').length,
+                    provider: data.filter(d => d.category === 'provider').length
+                }
             });
 
             return data;
