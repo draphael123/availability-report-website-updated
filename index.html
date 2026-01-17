@@ -1383,28 +1383,34 @@
                     }
                 }
                 
-                // APPROACH 3: Try published CSV with various GID formats
-                console.log('\n[APPROACH 3] Trying published CSV URLs...');
+                // APPROACH 3: Try published CSV with various formats (GID, sheet index, etc.)
+                console.log('\n[APPROACH 3] Trying various CSV URL formats...');
+                
+                // Try sheet indices 0-5 (sometimes works instead of GIDs)
+                const sheetIndices = ['0', '1', '2', '3', '4', '5'];
+                const allGidsAndIndices = [...new Set([...gids, ...sheetIndices])];
+                
                 const csvFormats = [
                     gid => `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv&gid=${gid}`,
                     gid => `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&output=csv`,
                     gid => `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`,
+                    gid => `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?sheet=${gid}&output=csv`,
                 ];
                 
-                for (const gid of gids) {
+                for (const gidOrIdx of allGidsAndIndices) {
                     for (const formatFn of csvFormats) {
-                        const url = formatFn(gid);
+                        const url = formatFn(gidOrIdx);
                         try {
                             const resp = await fetch(url);
                             if (resp.ok) {
                                 const csv = await resp.text();
                                 if (csv && csv.length > 100 && !csv.includes('<!DOCTYPE')) {
-                                    console.log(`CSV GID ${gid}: Got ${csv.length} chars`);
-                                    const parsed = parseCSV(csv, `csv-${gid}`);
+                                    console.log(`CSV ${gidOrIdx}: Got ${csv.length} chars`);
+                                    const parsed = parseCSV(csv, `csv-${gidOrIdx}`);
                                     if (parsed.length > 0) {
                                         allData.push(...parsed);
-                                        console.log(`CSV GID ${gid}: Parsed ${parsed.length} items`);
-                                        break; // Found working format, move to next GID
+                                        console.log(`CSV ${gidOrIdx}: Parsed ${parsed.length} items`);
+                                        break; // Found working format, move to next
                                     }
                                 }
                             }
