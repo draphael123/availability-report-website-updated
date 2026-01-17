@@ -1332,9 +1332,23 @@
                 console.log('HTML fetched, length:', html.length);
                 
                 // Extract original sheet key if present (for gviz approach)
-                const keyMatch = html.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-                const originalKey = keyMatch ? keyMatch[1] : null;
-                console.log('Original sheet key found:', originalKey);
+                // Try multiple patterns where Google might embed the original ID
+                let originalKey = null;
+                const keyPatterns = [
+                    /spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/,
+                    /"key"\s*:\s*"([a-zA-Z0-9_-]{20,})"/,
+                    /docid[=:]["']?([a-zA-Z0-9_-]{20,})/i,
+                    /ssid[=:]["']?([a-zA-Z0-9_-]{20,})/i,
+                ];
+                for (const pattern of keyPatterns) {
+                    const match = html.match(pattern);
+                    if (match && match[1] && !match[1].startsWith('2PACX')) {
+                        originalKey = match[1];
+                        console.log('Found original key via pattern:', pattern.toString());
+                        break;
+                    }
+                }
+                console.log('Original sheet key:', originalKey || 'NOT FOUND');
                 
                 // Extract all GIDs from HTML
                 const gidMatches = [...html.matchAll(/gid[=:][\s"']*(\d+)/g)];
@@ -1398,8 +1412,47 @@
                     }
                 }
                 
-                // APPROACH 4: Parse HTML tables directly (the pubhtml contains rendered tables)
-                console.log('\n[APPROACH 4] Parsing HTML tables directly...');
+                // APPROACH 4: Try gviz/tq endpoint with published ID (different from /pub)
+                console.log('\n[APPROACH 4] Trying gviz/tq with published ID...');
+                for (const gid of gids) {
+                    const gvizUrls = [
+                        `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/gviz/tq?tqx=out:csv&gid=${gid}`,
+                        `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/gviz/tq?tqx=out:csv`,
+                    ];
+                    for (const url of gvizUrls) {
+                        try {
+                            const resp = await fetch(url);
+                            if (resp.ok) {
+                                const text = await resp.text();
+                                // gviz returns JSONP-like format, extract CSV
+                                let csv = text;
+                                if (text.includes('google.visualization.Query.setResponse')) {
+                                    // Extract JSON from JSONP
+                                    const match = text.match(/setResponse\(([\s\S]+)\)/);
+                                    if (match) {
+                                        try {
+                                            const json = JSON.parse(match[1]);
+                                            // Convert to CSV manually
+                                            if (json.table && json.table.rows) {
+                                                csv = convertGvizToCSV(json.table);
+                                            }
+                                        } catch (e) { }
+                                    }
+                                }
+                                if (csv && csv.length > 100 && !csv.includes('<!DOCTYPE')) {
+                                    const parsed = parseCSV(csv, `gviz-pub-${gid}`);
+                                    if (parsed.length > 0) {
+                                        allData.push(...parsed);
+                                        console.log(`gviz/tq GID ${gid}: ${parsed.length} items`);
+                                    }
+                                }
+                            }
+                        } catch (e) { }
+                    }
+                }
+                
+                // APPROACH 5: Parse HTML tables directly
+                console.log('\n[APPROACH 5] Parsing HTML tables directly...');
                 syncText.textContent = 'Parsing tables...';
                 
                 const htmlParsed = parseHTMLTables(html);
@@ -1408,8 +1461,8 @@
                     console.log('HTML tables parsed:', htmlParsed.length, 'items');
                 }
                 
-                // APPROACH 5: Also fetch default CSV (no GID) as fallback
-                console.log('\n[APPROACH 5] Fetching default CSV...');
+                // APPROACH 6: Fetch default CSV (no GID) as final fallback
+                console.log('\n[APPROACH 6] Fetching default CSV...');
                 try {
                     const defaultCsvUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
                     const resp = await fetch(defaultCsvUrl);
@@ -1470,6 +1523,31 @@
 
             renderDashboard();
             document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+        
+        // Convert Google Visualization JSON to CSV
+        function convertGvizToCSV(table) {
+            if (!table || !table.rows) return '';
+            
+            const lines = [];
+            
+            // Add header row if cols exist
+            if (table.cols) {
+                lines.push(table.cols.map(c => c.label || '').join(','));
+            }
+            
+            // Add data rows
+            for (const row of table.rows) {
+                if (row.c) {
+                    const values = row.c.map(cell => {
+                        if (!cell) return '';
+                        return cell.v !== undefined ? String(cell.v) : (cell.f || '');
+                    });
+                    lines.push(values.join(','));
+                }
+            }
+            
+            return lines.join('\n');
         }
         
         // Parse HTML tables from pubhtml
