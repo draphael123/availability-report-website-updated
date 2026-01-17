@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnceHub Availability Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            --card-bg: rgba(30, 41, 59, 0.8);
+            --card-border: rgba(71, 85, 105, 0.4);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --hrt-color: #06b6d4;
+            --trt-color: #8b5cf6;
+            --provider-color: #f59e0b;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #eab308;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid var(--card-border);
+            border-top-color: var(--hrt-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            margin-top: 16px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            gap: 16px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--hrt-color), var(--trt-color), var(--provider-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success-color);
+            box-shadow: 0 0 8px var(--success-color);
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.syncing {
+            background: var(--warning-color);
+            box-shadow: 0 0 8px var(--warning-color);
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .status-dot.error {
+            background: var(--danger-color);
+            box-shadow: 0 0 8px var(--danger-color);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .warning-banner {
+            background: rgba(234, 179, 8, 0.15);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: var(--warning-color);
+            display: none;
+        }
+
+        .warning-banner.visible {
+            display: block;
+        }
+
+        /* Filter Buttons */
+        .filter-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .filter-btn {
+            font-family: 'Outfit', sans-serif;
+            padding: 10px 24px;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(12px);
+        }
+
+        .filter-btn:hover {
+            border-color: var(--text-muted);
+            color: var(--text-primary);
+        }
+
+        .filter-btn.active {
+            background: linear-gradient(135deg, var(--hrt-color), var(--trt-color));
+            border-color: transparent;
+            color: white;
+        }
+
+        .filter-btn.active[data-filter="hrt"] {
+            background: var(--hrt-color);
+        }
+
+        .filter-btn.active[data-filter="trt"] {
+            background: var(--trt-color);
+        }
+
+        .filter-btn.active[data-filter="provider"] {
+            background: var(--provider-color);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(12px);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 36px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .metric-value.success { color: var(--success-color); }
+        .metric-value.danger { color: var(--danger-color); }
+        .metric-value.hrt { color: var(--hrt-color); }
+        .metric-value.trt { color: var(--trt-color); }
+        .metric-value.provider { color: var(--provider-color); }
+
+        .metric-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .metric-sublabel {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Two Column Grid */
+        .two-column {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Wait Time Lists */
+        .wait-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .wait-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .wait-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .wait-list::-webkit-scrollbar-thumb {
+            background: var(--card-border);
+            border-radius: 3px;
+        }
+
+        .wait-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.2);
+        }
+
+        .wait-item:last-child {
+            border-bottom: none;
+        }
+
+        .wait-item-name {
+            font-size: 14px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .category-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .category-dot.hrt { background: var(--hrt-color); }
+        .category-dot.trt { background: var(--trt-color); }
+        .category-dot.provider { background: var(--provider-color); }
+
+        .wait-item-days {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 6px;
+        }
+
+        .wait-item-days.low {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success-color);
+        }
+
+        .wait-item-days.high {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger-color);
+        }
+
+        .list-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .list-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .list-header .accent {
+            width: 4px;
+            height: 24px;
+            border-radius: 2px;
+        }
+
+        .list-header .accent.green { background: var(--success-color); }
+        .list-header .accent.red { background: var(--danger-color); }
+
+        /* Pie Chart Section */
+        .chart-container {
+            position: relative;
+            height: 280px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        /* Category Breakdown */
+        .category-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .category-card {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 12px;
+            border-left: 4px solid;
+            transition: transform 0.2s ease;
+        }
+
+        .category-card:hover {
+            transform: translateX(4px);
+        }
+
+        .category-card.hrt { border-color: var(--hrt-color); }
+        .category-card.trt { border-color: var(--trt-color); }
+        .category-card.provider { border-color: var(--provider-color); }
+
+        .category-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 16px;
+            font-size: 20px;
+        }
+
+        .category-card.hrt .category-icon { background: rgba(6, 182, 212, 0.2); }
+        .category-card.trt .category-icon { background: rgba(139, 92, 246, 0.2); }
+        .category-card.provider .category-icon { background: rgba(245, 158, 11, 0.2); }
+
+        .category-info {
+            flex: 1;
+        }
+
+        .category-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .category-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .category-stats {
+            text-align: right;
+        }
+
+        .category-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .category-card.hrt .category-count { color: var(--hrt-color); }
+        .category-card.trt .category-count { color: var(--trt-color); }
+        .category-card.provider .category-count { color: var(--provider-color); }
+
+        .category-avg {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Bar Chart */
+        .bar-chart-section {
+            margin-bottom: 24px;
+        }
+
+        .bar-chart-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .bar-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .bar-chart::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .bar-chart::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .bar-chart::-webkit-scrollbar-thumb {
+            background: var(--card-border);
+            border-radius: 3px;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .bar-label {
+            width: 180px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-shrink: 0;
+        }
+
+        .bar-container {
+            flex: 1;
+            height: 24px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease-out;
+            position: relative;
+        }
+
+        .bar-fill.hrt { background: linear-gradient(90deg, var(--hrt-color), rgba(6, 182, 212, 0.6)); }
+        .bar-fill.trt { background: linear-gradient(90deg, var(--trt-color), rgba(139, 92, 246, 0.6)); }
+        .bar-fill.provider { background: linear-gradient(90deg, var(--provider-color), rgba(245, 158, 11, 0.6)); }
+
+        .bar-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-primary);
+            width: 50px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 24px 0;
+            border-top: 1px solid var(--card-border);
+            margin-top: 24px;
+        }
+
+        .footer-legend {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .footer-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .footer-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        .footer-dot.hrt { background: var(--hrt-color); }
+        .footer-dot.trt { background: var(--trt-color); }
+        .footer-dot.provider { background: var(--provider-color); }
+
+        .footer-note {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px;
+            }
+
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .metric-value {
+                font-size: 28px;
+            }
+
+            .bar-label {
+                width: 120px;
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading availability data...</div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>OnceHub Availability</h1>
+            <div class="sync-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="syncText">Connected</span>
+            </div>
+        </header>
+
+        <!-- Warning Banner -->
+        <div class="warning-banner" id="warningBanner">
+            ⚠️ Unable to fetch live data. Displaying cached/sample data.
+        </div>
+
+        <!-- Filter Buttons -->
+        <div class="filter-section">
+            <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+            <button class="filter-btn" data-filter="hrt" onclick="setFilter('hrt')">HRT</button>
+            <button class="filter-btn" data-filter="trt" onclick="setFilter('trt')">TRT</button>
+            <button class="filter-btn" data-filter="provider" onclick="setFilter('provider')">Providers</button>
+        </div>
+
+        <!-- Metrics -->
+        <div class="metrics-grid" id="metricsGrid"></div>
+
+        <!-- Two Column: Lists -->
+        <div class="two-column">
+            <div class="card">
+                <div class="list-header">
+                    <div class="accent green"></div>
+                    <h3>Lowest Wait Times</h3>
+                </div>
+                <div class="wait-list" id="lowestList"></div>
+            </div>
+            <div class="card">
+                <div class="list-header">
+                    <div class="accent red"></div>
+                    <h3>Highest Wait Times</h3>
+                </div>
+                <div class="wait-list" id="highestList"></div>
+            </div>
+        </div>
+
+        <!-- Two Column: Chart & Breakdown -->
+        <div class="two-column">
+            <div class="card">
+                <div class="card-title">Wait Time Distribution</div>
+                <div class="chart-container">
+                    <canvas id="pieChart"></canvas>
+                </div>
+                <div class="chart-legend" id="chartLegend"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">Category Breakdown</div>
+                <div class="category-cards" id="categoryBreakdown"></div>
+            </div>
+        </div>
+
+        <!-- Bar Chart -->
+        <div class="card bar-chart-section">
+            <h3>All States by Wait Time</h3>
+            <div class="bar-chart" id="barChart"></div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-legend">
+                <div class="footer-item">
+                    <div class="footer-dot hrt"></div>
+                    <span>HRT - Hormone Replacement Therapy</span>
+                </div>
+                <div class="footer-item">
+                    <div class="footer-dot trt"></div>
+                    <span>TRT - Testosterone Replacement Therapy</span>
+                </div>
+                <div class="footer-item">
+                    <div class="footer-dot provider"></div>
+                    <span>Provider - Individual Practitioners</span>
+                </div>
+            </div>
+            <div class="footer-note">Data refreshes automatically every 5 minutes</div>
+        </footer>
+    </div>
+
+    <script>
+        // ================================
+        // CONFIGURATION
+        // ================================
+        const CONFIG = {
+            SHEET_ID: '1vOXJEegJHJizatcXErv_dOLuWCiz_z8fGZasSDde2tc',
+            SHEET_NAME: 'Daily Summary',
+            REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
+            MAX_DAYS: 14 // For bar chart scaling
+        };
+
+        // ================================
+        // SAMPLE DATA (Fallback)
+        // ================================
+        const SAMPLE_DATA = [
+            // HRT States
+            { name: "HRT Alabama", days: 3, category: "hrt" },
+            { name: "HRT Alaska", days: 5, category: "hrt" },
+            { name: "HRT Arizona", days: 2, category: "hrt" },
+            { name: "HRT Arkansas", days: 4, category: "hrt" },
+            { name: "HRT California", days: 1, category: "hrt" },
+            { name: "HRT Colorado", days: 2, category: "hrt" },
+            { name: "HRT Connecticut", days: 6, category: "hrt" },
+            { name: "HRT Delaware", days: 3, category: "hrt" },
+            { name: "HRT Florida", days: 2, category: "hrt" },
+            { name: "HRT Georgia", days: 4, category: "hrt" },
+            { name: "HRT Hawaii", days: 7, category: "hrt" },
+            { name: "HRT Idaho", days: 3, category: "hrt" },
+            { name: "HRT Illinois", days: 2, category: "hrt" },
+            { name: "HRT Indiana", days: 5, category: "hrt" },
+            { name: "HRT Iowa", days: 4, category: "hrt" },
+            { name: "HRT Kansas", days: 3, category: "hrt" },
+            { name: "HRT Kentucky", days: 6, category: "hrt" },
+            { name: "HRT Louisiana", days: 4, category: "hrt" },
+            { name: "HRT Maine", days: 5, category: "hrt" },
+            { name: "HRT Maryland", days: 2, category: "hrt" },
+            { name: "HRT Massachusetts", days: 3, category: "hrt" },
+            { name: "HRT Michigan", days: 4, category: "hrt" },
+            { name: "HRT Minnesota", days: 2, category: "hrt" },
+            { name: "HRT Mississippi", days: 5, category: "hrt" },
+            { name: "HRT Missouri", days: 3, category: "hrt" },
+            { name: "HRT Montana", days: 6, category: "hrt" },
+            { name: "HRT Nebraska", days: 4, category: "hrt" },
+            { name: "HRT Nevada", days: 2, category: "hrt" },
+            { name: "HRT New Hampshire", days: 5, category: "hrt" },
+            { name: "HRT New Jersey", days: 3, category: "hrt" },
+            { name: "HRT New Mexico", days: 4, category: "hrt" },
+            { name: "HRT New York", days: 1, category: "hrt" },
+            { name: "HRT North Carolina", days: 3, category: "hrt" },
+            { name: "HRT North Dakota", days: 7, category: "hrt" },
+            { name: "HRT Ohio", days: 2, category: "hrt" },
+            { name: "HRT Oklahoma", days: 4, category: "hrt" },
+            { name: "HRT Oregon", days: 3, category: "hrt" },
+            { name: "HRT Pennsylvania", days: 2, category: "hrt" },
+            { name: "HRT Rhode Island", days: 5, category: "hrt" },
+            { name: "HRT South Carolina", days: 4, category: "hrt" },
+            { name: "HRT South Dakota", days: 6, category: "hrt" },
+            { name: "HRT Tennessee", days: 3, category: "hrt" },
+            { name: "HRT Texas", days: 1, category: "hrt" },
+            { name: "HRT Utah", days: 4, category: "hrt" },
+            { name: "HRT Vermont", days: 5, category: "hrt" },
+            { name: "HRT Virginia", days: 2, category: "hrt" },
+            { name: "HRT Washington", days: 3, category: "hrt" },
+            { name: "HRT West Virginia", days: 6, category: "hrt" },
+            { name: "HRT Wisconsin", days: 4, category: "hrt" },
+            { name: "HRT Wyoming", days: 5, category: "hrt" },
+            // TRT States
+            { name: "TRT Alabama", days: 4, category: "trt" },
+            { name: "TRT Alaska", days: 6, category: "trt" },
+            { name: "TRT Arizona", days: 3, category: "trt" },
+            { name: "TRT Arkansas", days: 5, category: "trt" },
+            { name: "TRT California", days: 2, category: "trt" },
+            { name: "TRT Colorado", days: 3, category: "trt" },
+            { name: "TRT Connecticut", days: 7, category: "trt" },
+            { name: "TRT Florida", days: 3, category: "trt" },
+            { name: "TRT Georgia", days: 5, category: "trt" },
+            { name: "TRT Illinois", days: 3, category: "trt" },
+            { name: "TRT New York", days: 2, category: "trt" },
+            { name: "TRT Ohio", days: 4, category: "trt" },
+            { name: "TRT Pennsylvania", days: 3, category: "trt" },
+            { name: "TRT Texas", days: 2, category: "trt" },
+            { name: "TRT Washington", days: 4, category: "trt" },
+            // Providers
+            { name: "Dr. Smith", days: 2, category: "provider" },
+            { name: "Dr. Johnson", days: 3, category: "provider" },
+            { name: "Dr. Williams", days: 5, category: "provider" },
+            { name: "Dr. Brown", days: 1, category: "provider" },
+            { name: "Dr. Jones", days: 4, category: "provider" },
+            { name: "Dr. Garcia", days: 2, category: "provider" },
+            { name: "Dr. Miller", days: 6, category: "provider" },
+            { name: "Dr. Davis", days: 3, category: "provider" },
+            { name: "Dr. Rodriguez", days: 4, category: "provider" },
+            { name: "Dr. Martinez", days: 2, category: "provider" }
+        ];
+
+        // ================================
+        // STATE
+        // ================================
+        let currentData = [];
+        let currentFilter = 'all';
+        let pieChart = null;
+        let lastSyncTime = null;
+        let isUsingSampleData = false;
+
+        // ================================
+        // DATA FETCHING
+        // ================================
+        async function fetchSheetData() {
+            const statusDot = document.getElementById('statusDot');
+            const syncText = document.getElementById('syncText');
+            
+            statusDot.classList.add('syncing');
+            syncText.textContent = 'Syncing...';
+
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.SHEET_NAME)}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch');
+                }
+
+                const csvText = await response.text();
+                const parsedData = parseCSV(csvText);
+                
+                if (parsedData.length > 0) {
+                    currentData = parsedData;
+                    isUsingSampleData = false;
+                    lastSyncTime = new Date();
+                    
+                    statusDot.classList.remove('syncing', 'error');
+                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)}`;
+                    document.getElementById('warningBanner').classList.remove('visible');
+                } else {
+                    throw new Error('No valid data parsed');
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                
+                if (currentData.length === 0) {
+                    currentData = SAMPLE_DATA;
+                    isUsingSampleData = true;
+                }
+                
+                statusDot.classList.remove('syncing');
+                statusDot.classList.add('error');
+                syncText.textContent = 'Using cached data';
+                document.getElementById('warningBanner').classList.add('visible');
+            }
+
+            renderDashboard();
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n');
+            const data = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                // Parse CSV considering quoted values
+                const values = parseCSVLine(line);
+                if (values.length < 2) continue;
+
+                const name = values[0].replace(/^"|"$/g, '').trim();
+                const valueStr = values[1].replace(/^"|"$/g, '').trim();
+
+                // Skip header rows or invalid entries
+                if (!name || name.toLowerCase() === 'name' || name.toLowerCase() === 'state') continue;
+
+                // Extract days number from value like "✅ 2" or "⚡ 4" or just "3"
+                const daysMatch = valueStr.match(/(\d+)/);
+                if (!daysMatch) continue;
+
+                const days = parseInt(daysMatch[1], 10);
+                if (isNaN(days)) continue;
+
+                // Detect category from name prefix
+                let category = 'provider';
+                if (name.toUpperCase().startsWith('HRT ')) {
+                    category = 'hrt';
+                } else if (name.toUpperCase().startsWith('TRT ')) {
+                    category = 'trt';
+                }
+
+                data.push({ name, days, category });
+            }
+
+            return data;
+        }
+
+        function parseCSVLine(line) {
+            const values = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    values.push(current);
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            values.push(current);
+
+            return values;
+        }
+
+        // ================================
+        // FILTERING
+        // ================================
+        function setFilter(filter) {
+            currentFilter = filter;
+            
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === filter);
+            });
+
+            renderDashboard();
+        }
+
+        function getFilteredData() {
+            if (currentFilter === 'all') {
+                return currentData;
+            }
+            return currentData.filter(item => item.category === currentFilter);
+        }
+
+        // ================================
+        // RENDERING
+        // ================================
+        function renderDashboard() {
+            const data = getFilteredData();
+            
+            if (data.length === 0) {
+                renderEmptyState();
+                return;
+            }
+
+            renderMetrics(data);
+            renderLists(data);
+            renderPieChart(data);
+            renderCategoryBreakdown();
+            renderBarChart(data);
+        }
+
+        function renderEmptyState() {
+            document.getElementById('metricsGrid').innerHTML = `
+                <div class="empty-state" style="grid-column: 1 / -1;">
+                    <div class="empty-state-icon">📊</div>
+                    <p>No data available for this filter</p>
+                </div>
+            `;
+            document.getElementById('lowestList').innerHTML = '';
+            document.getElementById('highestList').innerHTML = '';
+            document.getElementById('barChart').innerHTML = '';
+        }
+
+        function renderMetrics(data) {
+            const total = data.length;
+            const avg = (data.reduce((sum, d) => sum + d.days, 0) / total).toFixed(1);
+            const immediate = data.filter(d => d.days <= 3).length;
+            const sorted = [...data].sort((a, b) => a.days - b.days);
+            const best = sorted[0];
+            const worst = sorted[sorted.length - 1];
+
+            document.getElementById('metricsGrid').innerHTML = `
+                <div class="card metric-card">
+                    <div class="metric-value">${total}</div>
+                    <div class="metric-label">Total URLs</div>
+                </div>
+                <div class="card metric-card">
+                    <div class="metric-value">${avg}</div>
+                    <div class="metric-label">Avg Wait (days)</div>
+                </div>
+                <div class="card metric-card">
+                    <div class="metric-value success">${immediate}</div>
+                    <div class="metric-label">Immediate (≤3d)</div>
+                    <div class="metric-sublabel">${((immediate/total)*100).toFixed(0)}% of total</div>
+                </div>
+                <div class="card metric-card">
+                    <div class="metric-value success">${best.days}d</div>
+                    <div class="metric-label">Best</div>
+                    <div class="metric-sublabel">${truncateName(best.name)}</div>
+                </div>
+                <div class="card metric-card">
+                    <div class="metric-value danger">${worst.days}d</div>
+                    <div class="metric-label">Worst</div>
+                    <div class="metric-sublabel">${truncateName(worst.name)}</div>
+                </div>
+            `;
+        }
+
+        function renderLists(data) {
+            const sorted = [...data].sort((a, b) => a.days - b.days);
+            const lowest = sorted.slice(0, 10);
+            const highest = sorted.slice(-10).reverse();
+
+            document.getElementById('lowestList').innerHTML = lowest.map(item => `
+                <div class="wait-item">
+                    <div class="wait-item-name">
+                        <span class="category-dot ${item.category}"></span>
+                        ${item.name}
+                    </div>
+                    <div class="wait-item-days low">${item.days}d</div>
+                </div>
+            `).join('');
+
+            document.getElementById('highestList').innerHTML = highest.map(item => `
+                <div class="wait-item">
+                    <div class="wait-item-name">
+                        <span class="category-dot ${item.category}"></span>
+                        ${item.name}
+                    </div>
+                    <div class="wait-item-days high">${item.days}d</div>
+                </div>
+            `).join('');
+        }
+
+        function renderPieChart(data) {
+            const distribution = {
+                '1 day': data.filter(d => d.days === 1).length,
+                '2 days': data.filter(d => d.days === 2).length,
+                '3 days': data.filter(d => d.days === 3).length,
+                '4 days': data.filter(d => d.days === 4).length,
+                '5+ days': data.filter(d => d.days >= 5).length
+            };
+
+            const colors = ['#10b981', '#22d3ee', '#a78bfa', '#fbbf24', '#ef4444'];
+            const labels = Object.keys(distribution);
+            const values = Object.values(distribution);
+
+            // Destroy existing chart
+            if (pieChart) {
+                pieChart.destroy();
+            }
+
+            const ctx = document.getElementById('pieChart').getContext('2d');
+            pieChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors,
+                        borderColor: 'rgba(30, 41, 59, 0.8)',
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: 'rgba(71, 85, 105, 0.4)',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((context.raw / total) * 100).toFixed(1);
+                                    return `${context.raw} URLs (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Render legend
+            document.getElementById('chartLegend').innerHTML = labels.map((label, i) => `
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: ${colors[i]}"></div>
+                    <span>${label}: ${values[i]}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderCategoryBreakdown() {
+            const categories = [
+                { 
+                    id: 'hrt', 
+                    name: 'HRT', 
+                    fullName: 'Hormone Replacement Therapy',
+                    icon: '💊'
+                },
+                { 
+                    id: 'trt', 
+                    name: 'TRT', 
+                    fullName: 'Testosterone Replacement Therapy',
+                    icon: '💪'
+                },
+                { 
+                    id: 'provider', 
+                    name: 'Providers', 
+                    fullName: 'Individual Practitioners',
+                    icon: '👨‍⚕️'
+                }
+            ];
+
+            document.getElementById('categoryBreakdown').innerHTML = categories.map(cat => {
+                const items = currentData.filter(d => d.category === cat.id);
+                const count = items.length;
+                const avg = count > 0 
+                    ? (items.reduce((sum, d) => sum + d.days, 0) / count).toFixed(1)
+                    : '0';
+
+                return `
+                    <div class="category-card ${cat.id}">
+                        <div class="category-icon">${cat.icon}</div>
+                        <div class="category-info">
+                            <div class="category-name">${cat.name}</div>
+                            <div class="category-desc">${cat.fullName}</div>
+                        </div>
+                        <div class="category-stats">
+                            <div class="category-count">${count}</div>
+                            <div class="category-avg">Avg: ${avg}d</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderBarChart(data) {
+            const sorted = [...data].sort((a, b) => a.days - b.days);
+            const maxDays = Math.max(...data.map(d => d.days), CONFIG.MAX_DAYS);
+
+            // Use requestAnimationFrame for smooth animation
+            const barChart = document.getElementById('barChart');
+            barChart.innerHTML = sorted.map(item => {
+                const percentage = (item.days / maxDays) * 100;
+                return `
+                    <div class="bar-row">
+                        <div class="bar-label" title="${item.name}">${item.name}</div>
+                        <div class="bar-container">
+                            <div class="bar-fill ${item.category}" style="width: 0%;" data-width="${percentage}"></div>
+                        </div>
+                        <div class="bar-value">${item.days}d</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Animate bars
+            requestAnimationFrame(() => {
+                document.querySelectorAll('.bar-fill').forEach(bar => {
+                    bar.style.width = bar.dataset.width + '%';
+                });
+            });
+        }
+
+        // ================================
+        // UTILITIES
+        // ================================
+        function formatTime(date) {
+            return date.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit'
+            });
+        }
+
+        function truncateName(name) {
+            return name.length > 20 ? name.substring(0, 20) + '...' : name;
+        }
+
+        // ================================
+        // INITIALIZATION
+        // ================================
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchSheetData();
+            setInterval(fetchSheetData, CONFIG.REFRESH_INTERVAL);
+        });
+    </script>
+</body>
+</html>
+
