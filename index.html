@@ -1483,8 +1483,42 @@
                     }
                 }
                 
-                // APPROACH 7: Fetch default CSV (no GID) as final fallback
-                console.log('\n[APPROACH 7] Fetching default CSV...');
+                // APPROACH 7: Try CORS proxy for GID-specific CSVs (last resort)
+                if (allData.length < 50) { // Only if we haven't found much data yet
+                    console.log('\n[APPROACH 7] Trying CORS proxy...');
+                    const corsProxies = [
+                        url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                        url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                    ];
+                    
+                    for (const gid of gids.slice(0, 5)) { // Only try first 5 GIDs
+                        const targetUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`;
+                        
+                        for (const proxyFn of corsProxies) {
+                            try {
+                                const proxyUrl = proxyFn(targetUrl);
+                                console.log(`CORS proxy for GID ${gid}:`, proxyUrl);
+                                const resp = await fetch(proxyUrl, { timeout: 5000 });
+                                if (resp.ok) {
+                                    const csv = await resp.text();
+                                    if (csv && csv.length > 100 && !csv.includes('<!DOCTYPE') && !csv.includes('Error')) {
+                                        const parsed = parseCSV(csv, `proxy-${gid}`);
+                                        if (parsed.length > 0) {
+                                            allData.push(...parsed);
+                                            console.log(`CORS proxy GID ${gid}: ${parsed.length} items`);
+                                            break;
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.log(`CORS proxy GID ${gid} failed:`, e.message);
+                            }
+                        }
+                    }
+                }
+                
+                // APPROACH 8: Fetch default CSV as final fallback
+                console.log('\n[APPROACH 8] Fetching default CSV...');
                 try {
                     const defaultCsvUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
                     const resp = await fetch(defaultCsvUrl);
