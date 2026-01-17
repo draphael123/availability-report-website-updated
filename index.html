@@ -1457,8 +1457,16 @@
                     }
                 }
                 
-                // APPROACH 5: Parse HTML tables directly
-                console.log('\n[APPROACH 5] Parsing HTML tables directly...');
+                // APPROACH 5: Extract data from embedded JavaScript in pubhtml
+                console.log('\n[APPROACH 5] Looking for embedded data in scripts...');
+                const embeddedData = extractEmbeddedData(html);
+                if (embeddedData.length > 0) {
+                    allData.push(...embeddedData);
+                    console.log('Embedded data found:', embeddedData.length, 'items');
+                }
+                
+                // APPROACH 5b: Parse HTML tables directly
+                console.log('\n[APPROACH 5b] Parsing HTML tables directly...');
                 syncText.textContent = 'Parsing tables...';
                 
                 const htmlParsed = parseHTMLTables(html);
@@ -1598,6 +1606,63 @@
 
             renderDashboard();
             document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+        
+        // Extract data embedded in JavaScript within the HTML
+        function extractEmbeddedData(html) {
+            const data = [];
+            
+            // Look for JSON data embedded in script tags
+            const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/gi) || [];
+            
+            for (const script of scriptMatches) {
+                // Look for data arrays or objects containing HRT/TRT/Provider
+                const dataPatterns = [
+                    /\[\s*["']HRT["']\s*,\s*["'](\w+)["']\s*,\s*["']([^"']+)["'][^\]]*,\s*(\d+)/gi,
+                    /\[\s*["']TRT["']\s*,\s*["'](\w+)["']\s*,\s*["']([^"']+)["'][^\]]*,\s*(\d+)/gi,
+                    /\[\s*["']Provider["']\s*,\s*["']([^"']+)["'][^\]]*,\s*(\d+)/gi,
+                    /"HRT"\s*,\s*"(\w+)"\s*,\s*"([^"]+)"[^}]*"(\d+)"/gi,
+                    /"TRT"\s*,\s*"(\w+)"\s*,\s*"([^"]+)"[^}]*"(\d+)"/gi,
+                ];
+                
+                for (const pattern of dataPatterns) {
+                    let match;
+                    while ((match = pattern.exec(script)) !== null) {
+                        const isProvider = pattern.source.includes('Provider');
+                        if (isProvider) {
+                            data.push({
+                                name: `Provider: ${match[1]}`,
+                                days: parseInt(match[2], 10),
+                                category: 'provider',
+                                location: ''
+                            });
+                        } else {
+                            const cat = pattern.source.includes('HRT') ? 'hrt' : 'trt';
+                            data.push({
+                                name: match[2] || `${cat.toUpperCase()} ${match[1]}`,
+                                days: parseInt(match[3], 10),
+                                category: cat,
+                                location: match[1]
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Also look for data in the HTML body (sometimes rendered as hidden divs)
+            const hiddenDataPattern = /data-value=["'](\{[^"']+\})["']/gi;
+            let match;
+            while ((match = hiddenDataPattern.exec(html)) !== null) {
+                try {
+                    const obj = JSON.parse(match[1].replace(/&quot;/g, '"'));
+                    if (obj.category && obj.name && obj.days) {
+                        data.push(obj);
+                    }
+                } catch (e) { }
+            }
+            
+            console.log('Embedded data extraction found:', data.length, 'potential items');
+            return data.filter(d => d.days >= 0 && d.days <= 100);
         }
         
         // Show instructions for getting full data
