@@ -1285,8 +1285,8 @@
         // CONFIGURATION
         // ================================
         const CONFIG = {
-            SHEET_ID: '1vOXJEegJHJizatcXErv_dOLuWCiz_z8fGZasSDde2tc',
-            SHEET_NAME: 'Daily Summary',
+            // Published sheet ID (from the /pub URL)
+            PUBLISHED_ID: '2PACX-1vTkACH0TEM4SqfLHUsRa0f6rEMP2KWKc9RHI0RhQmTSsQax-G5r-U-GZ4vBQPdIbJEbJxx_AlWZgaO9',
             REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
             MAX_DAYS: 14 // For bar chart scaling
         };
@@ -1312,8 +1312,8 @@
             syncText.textContent = 'Syncing...';
 
             try {
-                // Try the standard Google Sheets CSV export URL
-                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.SHEET_NAME)}`;
+                // Use the published sheet CSV export URL
+                const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
                 console.log('Fetching from:', url);
                 
                 const response = await fetch(url);
@@ -1358,7 +1358,7 @@
                 statusDot.classList.remove('syncing');
                 statusDot.classList.add('error');
                 syncText.textContent = 'Failed to load';
-                warningBanner.innerHTML = `⚠️ ${error.message}. <a href="https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}" target="_blank" style="color: var(--warning-color); text-decoration: underline;">Open Sheet</a> → File → Share → Publish to web`;
+                warningBanner.innerHTML = `⚠️ ${error.message}. <a href="https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pubhtml" target="_blank" style="color: var(--warning-color); text-decoration: underline;">View Published Sheet</a>`;
                 warningBanner.classList.add('visible');
             }
 
@@ -2204,8 +2204,7 @@
                 'TRT Count': currentData.filter(d => d.category === 'trt').length,
                 'Provider Count': currentData.filter(d => d.category === 'provider').length,
                 'Last Sync': lastSyncTime ? lastSyncTime.toISOString() : 'Never',
-                'Sheet ID': CONFIG.SHEET_ID,
-                'Sheet Name': CONFIG.SHEET_NAME,
+                'Published ID': CONFIG.PUBLISHED_ID,
             };
             
             let text = '=== PARSED DATA SUMMARY ===\n';
