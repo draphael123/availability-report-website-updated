@@ -1286,10 +1286,20 @@
 
     <script>
         // ================================
-        // CONFIGURATION - VERSION 7 FINAL
+        // CONFIGURATION - VERSION 7.7
         // ================================
         const CONFIG = {
+            // Published sheet ID (default, shows Daily Summary)
             PUBLISHED_ID: '2PACX-1vTkACH0TEM4SqfLHUsRa0f6rEMP2KWKc9RHI0RhQmTSsQax-G5r-U-GZ4vBQPdIbJEbJxx_AlWZgaO9',
+            
+            // OPTIONAL: If you publish a specific Results tab as CSV, paste the full URL here
+            // Example: 'https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?gid=123456&single=true&output=csv'
+            RESULTS_TAB_URL: '',
+            
+            // OPTIONAL: Original sheet ID (from browser URL when editing sheet)
+            // This enables fetching specific tabs. Find it at: docs.google.com/spreadsheets/d/[THIS_ID]/edit
+            ORIGINAL_SHEET_ID: '',
+            
             REFRESH_INTERVAL: 5 * 60 * 1000,
             MAX_DAYS: 75
         };
@@ -1316,12 +1326,55 @@
             syncText.textContent = 'Loading...';
 
             console.log('========================================');
-            console.log('=== FETCH START (VERSION 7 FINAL) ===');
+            console.log('=== FETCH START (VERSION 7.7) ===');
             console.log('========================================');
             
             let allData = [];
             
             try {
+                // APPROACH 0: If RESULTS_TAB_URL is configured, use it directly
+                if (CONFIG.RESULTS_TAB_URL) {
+                    console.log('\n[APPROACH 0] Using configured Results tab URL...');
+                    syncText.textContent = 'Fetching configured Results tab...';
+                    try {
+                        const resp = await fetch(CONFIG.RESULTS_TAB_URL);
+                        if (resp.ok) {
+                            const csv = await resp.text();
+                            if (csv && csv.length > 100 && !csv.includes('<!DOCTYPE')) {
+                                const parsed = parseCSV(csv, 'ConfiguredResultsTab');
+                                if (parsed.length > 0) {
+                                    allData.push(...parsed);
+                                    console.log('Configured Results tab:', parsed.length, 'items');
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Configured Results tab failed:', e.message);
+                    }
+                }
+                
+                // APPROACH 0b: If ORIGINAL_SHEET_ID is configured, try gviz/tq
+                if (CONFIG.ORIGINAL_SHEET_ID && allData.length < 50) {
+                    console.log('\n[APPROACH 0b] Using configured original sheet ID...');
+                    // Try to get all sheets via gviz
+                    for (let idx = 0; idx < 10; idx++) {
+                        try {
+                            const gvizUrl = `https://docs.google.com/spreadsheets/d/${CONFIG.ORIGINAL_SHEET_ID}/gviz/tq?tqx=out:csv&gid=${idx}`;
+                            const resp = await fetch(gvizUrl);
+                            if (resp.ok) {
+                                const csv = await resp.text();
+                                if (csv && csv.length > 100 && !csv.includes('<!DOCTYPE') && !csv.includes('Error')) {
+                                    const parsed = parseCSV(csv, `OrigSheet-${idx}`);
+                                    if (parsed.length > 0) {
+                                        allData.push(...parsed);
+                                        console.log(`Original sheet GID ${idx}:`, parsed.length, 'items');
+                                    }
+                                }
+                            }
+                        } catch (e) { }
+                    }
+                }
+                
                 // APPROACH 1: Fetch pubhtml and extract ALL data from embedded tables
                 syncText.textContent = 'Fetching published data...';
                 console.log('\n[APPROACH 1] Fetching pubhtml...');
