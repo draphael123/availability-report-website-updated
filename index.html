@@ -1288,7 +1288,7 @@
             // Published sheet ID (from the /pub URL)
             PUBLISHED_ID: '2PACX-1vTkACH0TEM4SqfLHUsRa0f6rEMP2KWKc9RHI0RhQmTSsQax-G5r-U-GZ4vBQPdIbJEbJxx_AlWZgaO9',
             REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
-            MAX_DAYS: 14 // For bar chart scaling
+            MAX_DAYS: 75 // For bar chart scaling (data shows up to 75 days)
         };
 
 
@@ -1434,14 +1434,18 @@
 
             console.log(`=== PARSING SHEET: ${sheetName} ===`);
             console.log('Total lines:', lines.length);
+            console.log('First 3 lines:', lines.slice(0, 3));
 
-            // Try to detect if this is a multi-column format (Category, Location, Name, URL, Days)
-            // or a simple format (Name, Days)
+            // Detect format: multi-column (Category, Location, Name, URL, Days) vs simple (Name, Days)
             let isMultiColumn = false;
-            for (let i = 0; i < Math.min(5, lines.length); i++) {
+            let headerRowIndex = -1;
+            
+            for (let i = 0; i < Math.min(10, lines.length); i++) {
                 const line = lines[i].toLowerCase();
-                if (line.includes('category') && line.includes('name')) {
+                if (line.includes('category') && (line.includes('location') || line.includes('name'))) {
                     isMultiColumn = true;
+                    headerRowIndex = i;
+                    console.log('Detected MULTI-COLUMN format at row', i);
                     break;
                 }
             }
@@ -1455,32 +1459,37 @@
                 let name = '';
                 let days = null;
                 let category = 'provider';
+                let location = '';
 
                 if (isMultiColumn && values.length >= 5) {
                     // Multi-column format: Category, Location, Name, URL, Days Out
                     const categoryRaw = values[0]?.replace(/^"|"$/g, '').trim() || '';
+                    location = values[1]?.replace(/^"|"$/g, '').trim() || '';
                     name = values[2]?.replace(/^"|"$/g, '').trim() || '';
                     const daysRaw = values[4]?.replace(/^"|"$/g, '').trim() || '';
                     
+                    // Skip summary row
+                    if (categoryRaw.toLowerCase().includes('summary')) continue;
                     // Skip headers
                     if (categoryRaw.toLowerCase() === 'category') continue;
                     
                     const daysMatch = daysRaw.match(/(\d+)/);
                     if (daysMatch) days = parseInt(daysMatch[1], 10);
                     
-                    if (categoryRaw.toUpperCase() === 'HRT') category = 'hrt';
-                    else if (categoryRaw.toUpperCase() === 'TRT') category = 'trt';
-                    else if (categoryRaw.toUpperCase() === 'PROVIDER') category = 'provider';
-                } else {
+                    const catUpper = categoryRaw.toUpperCase();
+                    if (catUpper === 'HRT') category = 'hrt';
+                    else if (catUpper === 'TRT') category = 'trt';
+                    else if (catUpper === 'PROVIDER') category = 'provider';
+                    
+                } else if (values.length >= 2) {
                     // Simple format: Name, Days
                     const col0 = values[0]?.replace(/^"|"$/g, '').trim() || '';
                     const col1 = values[1]?.replace(/^"|"$/g, '').trim() || '';
 
-                    // Skip section headers
+                    // Skip section headers and summaries
                     if (col0.includes('WAIT TIMES') || 
                         col0.includes('LOWEST') || 
                         col0.includes('HIGHEST') ||
-                        col0.includes('Daily Summary') ||
                         col0.includes('Summary') ||
                         col0.includes('🟢') ||
                         col0.includes('🟡') ||
@@ -1505,20 +1514,25 @@
                     else if (nameUpper.startsWith('PROVIDER:') || nameUpper.startsWith('PROVIDER ')) category = 'provider';
                 }
 
-                // Validate
-                if (!name || days === null || days < 0 || days > 30) continue;
+                // Validate - allow days up to 100 (your data shows 50, 75, etc.)
+                if (!name || days === null || days < 0 || days > 100) continue;
 
                 // Skip duplicates within this sheet
-                const key = name;
+                const key = name.toLowerCase();
                 if (seen.has(key)) continue;
                 seen.add(key);
 
-                data.push({ name, days, category });
+                data.push({ name, days, category, location });
             }
 
             console.log(`Sheet "${sheetName}" parsed:`, data.length, 'items');
+            console.log('By category:', {
+                hrt: data.filter(d => d.category === 'hrt').length,
+                trt: data.filter(d => d.category === 'trt').length,
+                provider: data.filter(d => d.category === 'provider').length
+            });
             if (data.length > 0) {
-                console.log('Sample:', data.slice(0, 3));
+                console.log('Sample:', data.slice(0, 5));
             }
 
             return data;
