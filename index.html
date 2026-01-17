@@ -1292,9 +1292,8 @@
             // Published sheet ID (from the /pub URL)
             PUBLISHED_ID: '2PACX-1vTkACH0TEM4SqfLHUsRa0f6rEMP2KWKc9RHI0RhQmTSsQax-G5r-U-GZ4vBQPdIbJEbJxx_AlWZgaO9',
             REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
-            MAX_DAYS: 75 // For bar chart scaling (data shows up to 75 days)
+            MAX_DAYS: 75 // For bar chart scaling
         };
-
 
         // ================================
         // STATE
@@ -1316,30 +1315,21 @@
             statusDot.classList.add('syncing');
             syncText.textContent = 'Loading data...';
 
-            console.log('=== FETCH START (VERSION 4) ===');
+            console.log('=== FETCH START (VERSION 5) ===');
             
             try {
-                // Simple approach: just fetch the published CSV
-                const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
-                console.log('Fetching:', url);
+                // Fetch the published HTML page and parse all tables
+                const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pubhtml`;
+                console.log('Fetching HTML:', htmlUrl);
                 
-                const response = await fetch(url);
-                console.log('Response status:', response.status);
+                const response = await fetch(htmlUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
-                if (!response.ok) {
-                    throw new Error(`Server returned ${response.status}`);
-                }
+                const html = await response.text();
+                console.log('HTML length:', html.length);
                 
-                const csvText = await response.text();
-                console.log('CSV length:', csvText.length);
-                console.log('CSV preview (first 500 chars):', csvText.substring(0, 500));
-                
-                // Check if we got HTML error page instead of CSV
-                if (csvText.includes('<!DOCTYPE') || csvText.includes('<html')) {
-                    throw new Error('Received HTML instead of CSV - sheet may not be published correctly');
-                }
-                
-                const parsed = parseCSV(csvText, 'Published Sheet');
+                // Parse HTML to extract data from tables
+                const parsed = parsePublishedHTML(html);
                 
                 if (parsed.length > 0) {
                     currentData = parsed;
@@ -1352,7 +1342,7 @@
                     console.log('=== SUCCESS ===');
                     console.log('Total items:', parsed.length);
                 } else {
-                    throw new Error('No valid data parsed from CSV');
+                    throw new Error('No valid data found in published sheet');
                 }
             } catch (error) {
                 console.error('=== FETCH ERROR ===', error);
@@ -1366,6 +1356,82 @@
 
             renderDashboard();
             document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+        
+        function parsePublishedHTML(html) {
+            console.log('=== PARSING HTML ===');
+            const data = [];
+            const seen = new Set();
+            
+            // Create a DOM parser
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            // Find all tables (each sheet tab becomes a table)
+            const tables = doc.querySelectorAll('table');
+            console.log('Found tables:', tables.length);
+            
+            tables.forEach((table, tableIndex) => {
+                const rows = table.querySelectorAll('tr');
+                console.log(`Table ${tableIndex}: ${rows.length} rows`);
+                
+                // Look for rows with Category column (HRT, TRT, Provider)
+                let hasDataRows = false;
+                
+                rows.forEach((row, rowIndex) => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length < 5) return;
+                    
+                    // Get cell text content
+                    const col0 = cells[0]?.textContent?.trim() || '';
+                    const col1 = cells[1]?.textContent?.trim() || '';
+                    const col2 = cells[2]?.textContent?.trim() || '';
+                    const col3 = cells[3]?.textContent?.trim() || '';
+                    const col4 = cells[4]?.textContent?.trim() || '';
+                    
+                    // Check if this is a data row (Category = HRT, TRT, or Provider)
+                    const category = col0.toUpperCase();
+                    if (category !== 'HRT' && category !== 'TRT' && category !== 'PROVIDER') return;
+                    
+                    hasDataRows = true;
+                    
+                    // Extract data: Category, Location, Name, URL, Days Out
+                    const name = col2 || `${category} ${col1}`;
+                    const daysMatch = col4.match(/(\d+)/);
+                    const days = daysMatch ? parseInt(daysMatch[1], 10) : null;
+                    
+                    if (!name || days === null || days < 0 || days > 100) return;
+                    
+                    // Dedupe by name
+                    const key = name.toLowerCase();
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    
+                    data.push({
+                        name,
+                        days,
+                        category: category.toLowerCase(),
+                        location: col1
+                    });
+                });
+                
+                if (hasDataRows) {
+                    console.log(`Table ${tableIndex} has data rows, extracted so far:`, data.length);
+                }
+            });
+            
+            console.log('Total parsed from HTML:', data.length);
+            console.log('Categories:', {
+                hrt: data.filter(d => d.category === 'hrt').length,
+                trt: data.filter(d => d.category === 'trt').length,
+                provider: data.filter(d => d.category === 'provider').length
+            });
+            
+            if (data.length > 0) {
+                console.log('Sample:', data.slice(0, 5));
+            }
+            
+            return data;
         }
 
         function parseCSV(csvText, sheetName = 'Unknown') {
