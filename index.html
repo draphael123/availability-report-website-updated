@@ -1304,117 +1304,54 @@
         // DATA FETCHING
         // ================================
         
-        // Fetch a single sheet by GID
-        async function fetchSheetByGid(gid) {
-            // Try different URL formats
-            const urls = [
-                `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv&gid=${gid}`,
-                `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?gid=${gid}&output=csv`
-            ];
-            
-            for (const url of urls) {
-                try {
-                    const response = await fetch(url);
-                    if (response.ok) {
-                        const text = await response.text();
-                        // Make sure we got CSV, not HTML
-                        if (!text.includes('<!DOCTYPE') && !text.includes('<html') && text.length > 10) {
-                            return { gid, csvText: text, url };
-                        }
-                    }
-                } catch (e) {
-                    // Try next URL format
-                }
-            }
-            return null;
-        }
-        
         async function fetchSheetData() {
             const statusDot = document.getElementById('statusDot');
             const syncText = document.getElementById('syncText');
             const warningBanner = document.getElementById('warningBanner');
             
             statusDot.classList.add('syncing');
-            syncText.textContent = 'Loading sheets...';
+            syncText.textContent = 'Loading data...';
 
+            console.log('=== FETCH START (v3) ===');
+            
             try {
-                const allData = [];
-                let sheetsLoaded = 0;
+                // Simple approach: just fetch the published CSV
+                const url = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
+                console.log('Fetching:', url);
                 
-                // First, fetch the default sheet (no gid)
-                console.log('=== FETCHING ALL SHEETS ===');
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
                 
-                const defaultUrl = `https://docs.google.com/spreadsheets/d/e/${CONFIG.PUBLISHED_ID}/pub?output=csv`;
-                console.log('Fetching default sheet:', defaultUrl);
-                
-                try {
-                    const response = await fetch(defaultUrl);
-                    if (response.ok) {
-                        const csvText = await response.text();
-                        if (!csvText.includes('<!DOCTYPE') && csvText.length > 10) {
-                            const parsed = parseCSV(csvText, 'Default Sheet');
-                            if (parsed.length > 0) {
-                                allData.push(...parsed);
-                                sheetsLoaded++;
-                                console.log(`Default sheet: ${parsed.length} items`);
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.log('Default sheet failed:', e.message);
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}`);
                 }
                 
-                // Try fetching additional sheets by GID
-                // GID 0 is usually first sheet, but published sheets may have different GIDs
-                // Common GIDs: 0, 1, 2... and also large numbers like 123456789
-                const gidsToTry = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+                const csvText = await response.text();
+                console.log('CSV length:', csvText.length);
+                console.log('CSV preview (first 500 chars):', csvText.substring(0, 500));
                 
-                for (const gid of gidsToTry) {
-                    syncText.textContent = `Loading sheet ${gid}...`;
-                    
-                    const result = await fetchSheetByGid(gid);
-                    if (result) {
-                        const parsed = parseCSV(result.csvText, `Sheet GID ${gid}`);
-                        if (parsed.length > 0) {
-                            allData.push(...parsed);
-                            sheetsLoaded++;
-                            console.log(`GID ${gid}: ${parsed.length} items`);
-                        }
-                    }
+                // Check if we got HTML error page instead of CSV
+                if (csvText.includes('<!DOCTYPE') || csvText.includes('<html')) {
+                    throw new Error('Received HTML instead of CSV - sheet may not be published correctly');
                 }
                 
-                console.log('=== ALL SHEETS LOADED ===');
-                console.log('Total sheets with data:', sheetsLoaded);
-                console.log('Total raw items:', allData.length);
+                const parsed = parseCSV(csvText, 'Published Sheet');
                 
-                // Remove duplicates by name
-                const seen = new Set();
-                const uniqueData = allData.filter(item => {
-                    const key = item.name.toLowerCase();
-                    if (seen.has(key)) return false;
-                    seen.add(key);
-                    return true;
-                });
-                
-                console.log('Unique items after dedup:', uniqueData.length);
-                console.log('Categories:', {
-                    hrt: uniqueData.filter(d => d.category === 'hrt').length,
-                    trt: uniqueData.filter(d => d.category === 'trt').length,
-                    provider: uniqueData.filter(d => d.category === 'provider').length
-                });
-                
-                if (uniqueData.length > 0) {
-                    currentData = uniqueData;
+                if (parsed.length > 0) {
+                    currentData = parsed;
                     lastSyncTime = new Date();
                     
                     statusDot.classList.remove('syncing', 'error');
-                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${sheetsLoaded} sheets)`;
+                    syncText.textContent = `Last sync: ${formatTime(lastSyncTime)} (${parsed.length} items)`;
                     warningBanner.classList.remove('visible');
+                    
+                    console.log('=== SUCCESS ===');
+                    console.log('Total items:', parsed.length);
                 } else {
-                    throw new Error('No valid data found in any sheet');
+                    throw new Error('No valid data parsed from CSV');
                 }
             } catch (error) {
-                console.error('Fetch error:', error);
+                console.error('=== FETCH ERROR ===', error);
                 
                 statusDot.classList.remove('syncing');
                 statusDot.classList.add('error');
