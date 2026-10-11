@@ -1,5 +1,7 @@
 # Fountain Availability Tracker
 
+Live tracker: https://fountain-availability-intelligence.vercel.app
+
 Password-gated report viewer for Fountain Vitality. The repository contains no report records or password. The Vercel server route reads the protected Fountain report source after validating the viewer's session. The live source and its weekly update workflow remain authoritative.
 
 ## Vercel setup
